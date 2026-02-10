@@ -9,3 +9,4 @@ crossterm = "0.28"
 pulldown-cmark = "0.13"
 ratatui-image = { version = "10", default-features = false, features = ["image-defaults", "crossterm"] }
 image = "0.25"
+tachyonfx = "0.23"

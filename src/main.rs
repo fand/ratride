@@ -3,23 +3,30 @@ mod markdown;
 use std::collections::HashMap;
 use std::io;
 use std::path::Path;
+use std::time::Instant;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use markdown::{Slide, SlideLayout};
+use markdown::{Slide, SlideLayout, TransitionKind};
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
+    style::Color,
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap},
     DefaultTerminal, Frame,
 };
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
+use tachyonfx::{fx, Duration, Effect, EffectRenderer, Interpolation, Motion};
+
+const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
 
 struct App {
     slides: Vec<Slide>,
     current_page: usize,
     scroll_offsets: Vec<u16>,
     quit: bool,
-    /// Image states keyed by file path.
     image_states: HashMap<String, StatefulProtocol>,
+    /// Active transition effect.
+    effect: Option<Effect>,
+    last_frame: Instant,
 }
 
 impl App {
@@ -27,7 +34,6 @@ impl App {
         let slides = markdown::parse_slides(markdown);
         let len = slides.len().max(1);
 
-        // Load images
         let mut image_states: HashMap<String, StatefulProtocol> = HashMap::new();
         let picker = Picker::from_query_stdio().ok();
         if let Some(picker) = picker {
@@ -53,6 +59,8 @@ impl App {
             scroll_offsets: vec![0; len],
             quit: false,
             image_states,
+            effect: None,
+            last_frame: Instant::now(),
         }
     }
 
@@ -68,20 +76,62 @@ impl App {
         &mut self.scroll_offsets[self.current_page]
     }
 
-    fn next_page(&mut self) {
-        if self.current_page + 1 < self.total_pages() {
-            self.current_page += 1;
+    fn goto_page(&mut self, page: usize) {
+        if page < self.total_pages() && page != self.current_page {
+            self.current_page = page;
+            self.effect = Some(self.create_transition());
         }
     }
 
+    fn next_page(&mut self) {
+        let next = self.current_page + 1;
+        self.goto_page(next);
+    }
+
     fn prev_page(&mut self) {
-        self.current_page = self.current_page.saturating_sub(1);
+        if self.current_page > 0 {
+            self.goto_page(self.current_page - 1);
+        }
+    }
+
+    fn create_transition(&self) -> Effect {
+        let slide = &self.slides[self.current_page];
+        match slide.transition {
+            TransitionKind::SlideIn => fx::fade_from_fg(
+                Color::Black,
+                (400, Interpolation::QuadOut),
+            ),
+            TransitionKind::Fade => fx::fade_from_fg(
+                Color::Black,
+                (600, Interpolation::SineOut),
+            ),
+            TransitionKind::Dissolve => fx::dissolve(
+                (500, Interpolation::Linear),
+            ).reversed(),
+            TransitionKind::Coalesce => fx::coalesce(
+                (500, Interpolation::QuadOut),
+            ),
+            TransitionKind::SweepIn => fx::sweep_in(
+                Motion::LeftToRight,
+                15,
+                0,
+                Color::Black,
+                (600, Interpolation::QuadOut),
+            ),
+        }
     }
 
     fn run(mut self, mut terminal: DefaultTerminal) -> io::Result<()> {
+        self.last_frame = Instant::now();
         while !self.quit {
             terminal.draw(|frame| self.draw(frame))?;
-            self.handle_event()?;
+            self.handle_events()?;
+            // Sleep to maintain frame rate
+            let elapsed = self.last_frame.elapsed();
+            if elapsed < FRAME_DURATION {
+                std::thread::sleep(FRAME_DURATION - elapsed);
+            }
+            self.last_frame = Instant::now();
         }
         Ok(())
     }
@@ -98,6 +148,15 @@ impl App {
             SlideLayout::Default => self.draw_default(frame, main_area),
             SlideLayout::Center => self.draw_center(frame, main_area),
             SlideLayout::TwoColumn => self.draw_two_column(frame, main_area),
+        }
+
+        // Apply transition effect
+        if let Some(ref mut effect) = self.effect {
+            let delta = Duration::from_millis(FRAME_DURATION.as_millis() as u32);
+            frame.render_effect(effect, main_area, delta);
+            if effect.done() {
+                self.effect = None;
+            }
         }
 
         // Status bar
@@ -134,7 +193,6 @@ impl App {
         let content_len = slide.content.lines.len();
         self.draw_scrollbar(frame, area, content_len, content_area.height);
 
-        // Render images
         let scroll = self.scroll_offset();
         let images: Vec<_> = self.slides[self.current_page].images.clone();
         for img in &images {
@@ -157,7 +215,6 @@ impl App {
             .scroll((self.scroll_offset(), 0));
         frame.render_widget(paragraph, centered_area);
 
-        // Render images
         let scroll = self.scroll_offset();
         let images: Vec<_> = self.slides[self.current_page].images.clone();
         for img in &images {
@@ -201,7 +258,6 @@ impl App {
         let y_start = line_index as i32 - scroll as i32;
         let y_end = y_start + height as i32;
 
-        // Skip if completely out of view
         if y_end <= 0 || y_start >= content_area.height as i32 {
             return;
         }
@@ -233,30 +289,31 @@ impl App {
         }
     }
 
-    fn handle_event(&mut self) -> io::Result<()> {
-        if let Event::Key(key) = event::read()? {
-            if key.kind != KeyEventKind::Press {
-                return Ok(());
-            }
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
-                // Page navigation
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => self.next_page(),
-                KeyCode::Left | KeyCode::Char('h') => self.prev_page(),
-                // Scroll
-                KeyCode::Char('j') | KeyCode::Down => {
-                    *self.scroll_offset_mut() = self.scroll_offset().saturating_add(1);
+    fn handle_events(&mut self) -> io::Result<()> {
+        // Poll with timeout instead of blocking, so animation frames keep running
+        while event::poll(std::time::Duration::ZERO)? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
                 }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
+                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => self.next_page(),
+                    KeyCode::Left | KeyCode::Char('h') => self.prev_page(),
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        *self.scroll_offset_mut() = self.scroll_offset().saturating_add(1);
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
+                    }
+                    KeyCode::Char('d') => {
+                        *self.scroll_offset_mut() = self.scroll_offset().saturating_add(10);
+                    }
+                    KeyCode::Char('u') => {
+                        *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
+                    }
+                    _ => {}
                 }
-                KeyCode::Char('d') => {
-                    *self.scroll_offset_mut() = self.scroll_offset().saturating_add(10);
-                }
-                KeyCode::Char('u') => {
-                    *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
-                }
-                _ => {}
             }
         }
         Ok(())

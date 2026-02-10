@@ -10,6 +10,16 @@ pub enum SlideLayout {
     TwoColumn,
 }
 
+#[derive(Clone, Debug, Default)]
+pub enum TransitionKind {
+    #[default]
+    SlideIn,
+    Fade,
+    Dissolve,
+    Coalesce,
+    SweepIn,
+}
+
 /// Image reference found in a slide.
 #[derive(Clone, Debug)]
 pub struct SlideImage {
@@ -28,6 +38,8 @@ pub struct Slide {
     pub right_content: Option<Text<'static>>,
     /// Images in this slide.
     pub images: Vec<SlideImage>,
+    /// Transition effect for entering this slide.
+    pub transition: TransitionKind,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -46,17 +58,35 @@ pub fn parse_slides(input: &str) -> Vec<Slide> {
     converter.finish_slides()
 }
 
-fn parse_layout_comment(html: &str) -> Option<SlideLayout> {
+enum CommentDirective {
+    Layout(SlideLayout),
+    Transition(TransitionKind),
+}
+
+fn parse_comment(html: &str) -> Option<CommentDirective> {
     let trimmed = html.trim();
     let inner = trimmed.strip_prefix("<!--")?.strip_suffix("-->")?;
     let inner = inner.trim();
-    let value = inner.strip_prefix("layout:")?.trim();
-    match value {
-        "center" => Some(SlideLayout::Center),
-        "two-column" => Some(SlideLayout::TwoColumn),
-        "default" => Some(SlideLayout::Default),
-        _ => None,
+
+    if let Some(value) = inner.strip_prefix("layout:") {
+        let layout = match value.trim() {
+            "center" => SlideLayout::Center,
+            "two-column" => SlideLayout::TwoColumn,
+            _ => SlideLayout::Default,
+        };
+        return Some(CommentDirective::Layout(layout));
     }
+    if let Some(value) = inner.strip_prefix("transition:") {
+        let transition = match value.trim() {
+            "fade" => TransitionKind::Fade,
+            "dissolve" => TransitionKind::Dissolve,
+            "coalesce" => TransitionKind::Coalesce,
+            "sweep" | "sweep-in" => TransitionKind::SweepIn,
+            _ => TransitionKind::SlideIn,
+        };
+        return Some(CommentDirective::Transition(transition));
+    }
+    None
 }
 
 struct MdConverter {
@@ -69,6 +99,7 @@ struct MdConverter {
     in_blockquote: bool,
     in_image: bool,
     pending_layout: Option<SlideLayout>,
+    pending_transition: Option<TransitionKind>,
     images: Vec<SlideImage>,
 }
 
@@ -90,6 +121,7 @@ impl MdConverter {
             in_blockquote: false,
             in_image: false,
             pending_layout: None,
+            pending_transition: None,
             images: Vec::new(),
         }
     }
@@ -130,6 +162,7 @@ impl MdConverter {
         }
         let lines = std::mem::take(&mut self.lines);
         let images = std::mem::take(&mut self.images);
+        let transition = self.pending_transition.take().unwrap_or_default();
         if !lines.is_empty() {
             let layout = self.pending_layout.take().unwrap_or_default();
             let mut slide = match layout {
@@ -139,9 +172,11 @@ impl MdConverter {
                     content: Text::from(lines),
                     right_content: None,
                     images: Vec::new(),
+                    transition: TransitionKind::default(),
                 },
             };
             slide.images = images;
+            slide.transition = transition;
             self.slides.push(slide);
         }
     }
@@ -173,12 +208,17 @@ impl MdConverter {
                 self.in_image = false;
             }
 
-            // --- HTML comments (layout directives) ---
+            // --- HTML comments (directives) ---
             Event::Html(html) | Event::InlineHtml(html) => {
-                if let Some(layout) = parse_layout_comment(&html) {
-                    self.pending_layout = Some(layout);
+                match parse_comment(&html) {
+                    Some(CommentDirective::Layout(layout)) => {
+                        self.pending_layout = Some(layout);
+                    }
+                    Some(CommentDirective::Transition(transition)) => {
+                        self.pending_transition = Some(transition);
+                    }
+                    None => {}
                 }
-                // Otherwise ignore HTML
             }
 
             // --- Headings ---
@@ -330,6 +370,7 @@ impl MdConverter {
                 content: Text::from(self.lines),
                 right_content: None,
                 images: std::mem::take(&mut self.images),
+                transition: self.pending_transition.take().unwrap_or_default(),
             });
         }
         self.slides
@@ -363,6 +404,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 content: Text::from(left),
                 right_content: Some(Text::from(right)),
                 images: Vec::new(),
+                transition: TransitionKind::default(),
             }
         }
         None => Slide {
@@ -370,6 +412,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             content: Text::from(lines),
             right_content: None,
             images: Vec::new(),
+            transition: TransitionKind::default(),
         },
     }
 }

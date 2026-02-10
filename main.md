@@ -8,6 +8,8 @@ Press `→` to go to next slide.
 
 ---
 
+<!-- transition: fade -->
+
 ## Features
 
 - Parse Markdown and render in terminal
@@ -15,11 +17,12 @@ Press `→` to go to next slide.
 - **Bold**, *Italic*, ~~Strikethrough~~
 - `inline code` support
 - Page navigation with `←`/`→`
-- Per-slide layouts
+- Per-slide layouts & transitions
 
 ---
 
 <!-- layout: two-column -->
+<!-- transition: sweep-in -->
 
 ## Left Column
 
@@ -37,11 +40,7 @@ Press `→` to go to next slide.
 
 ---
 
-## Image Demo
-
-![demo](demo.png)
-
----
+<!-- transition: coalesce -->
 
 ## Code Block
 
@@ -56,6 +55,7 @@ fn main() {
 ---
 
 <!-- layout: center -->
+<!-- transition: dissolve -->
 
 # Thank you!
 
