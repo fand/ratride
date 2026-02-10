@@ -1,40 +1,63 @@
 mod markdown;
 
+use std::collections::HashMap;
 use std::io;
+use std::path::Path;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use markdown::{Slide, SlideLayout};
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
-    widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap},
     DefaultTerminal, Frame,
 };
+use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
 
 struct App {
     slides: Vec<Slide>,
     current_page: usize,
     scroll_offsets: Vec<u16>,
     quit: bool,
+    /// Image states keyed by file path.
+    image_states: HashMap<String, StatefulProtocol>,
 }
 
 impl App {
-    fn new(markdown: &str) -> Self {
+    fn new(markdown: &str, base_dir: &Path) -> Self {
         let slides = markdown::parse_slides(markdown);
         let len = slides.len().max(1);
+
+        // Load images
+        let mut image_states: HashMap<String, StatefulProtocol> = HashMap::new();
+        let picker = Picker::from_query_stdio().ok();
+        if let Some(picker) = picker {
+            for slide in &slides {
+                for img in &slide.images {
+                    if image_states.contains_key(&img.path) {
+                        continue;
+                    }
+                    let img_path = base_dir.join(&img.path);
+                    if let Ok(dyn_img) = image::ImageReader::open(&img_path)
+                        .and_then(|r| r.decode().map_err(|e| io::Error::new(io::ErrorKind::Other, e)))
+                    {
+                        let protocol = picker.new_resize_protocol(dyn_img);
+                        image_states.insert(img.path.clone(), protocol);
+                    }
+                }
+            }
+        }
+
         Self {
             slides,
             current_page: 0,
             scroll_offsets: vec![0; len],
             quit: false,
+            image_states,
         }
     }
 
     fn total_pages(&self) -> usize {
         self.slides.len()
-    }
-
-    fn current_slide(&self) -> &Slide {
-        &self.slides[self.current_page]
     }
 
     fn scroll_offset(&self) -> u16 {
@@ -63,22 +86,22 @@ impl App {
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
         let [main_area, status_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
-        let slide = self.current_slide();
+        let layout = self.slides[self.current_page].layout.clone();
 
-        match slide.layout {
-            SlideLayout::Default => self.draw_default(frame, main_area, slide),
-            SlideLayout::Center => self.draw_center(frame, main_area, slide),
-            SlideLayout::TwoColumn => self.draw_two_column(frame, main_area, slide),
+        match layout {
+            SlideLayout::Default => self.draw_default(frame, main_area),
+            SlideLayout::Center => self.draw_center(frame, main_area),
+            SlideLayout::TwoColumn => self.draw_two_column(frame, main_area),
         }
 
         // Status bar
-        let layout_label = match slide.layout {
+        let layout_label = match layout {
             SlideLayout::Default => "",
             SlideLayout::Center => " [center]",
             SlideLayout::TwoColumn => " [two-column]",
@@ -99,7 +122,8 @@ impl App {
         );
     }
 
-    fn draw_default(&self, frame: &mut Frame, area: Rect, slide: &Slide) {
+    fn draw_default(&mut self, frame: &mut Frame, area: Rect) {
+        let slide = &self.slides[self.current_page];
         let content_area = area.inner(Margin::new(2, 1));
 
         let paragraph = Paragraph::new(slide.content.clone())
@@ -107,14 +131,22 @@ impl App {
             .scroll((self.scroll_offset(), 0));
         frame.render_widget(paragraph, content_area);
 
-        self.draw_scrollbar(frame, area, slide.content.lines.len(), content_area.height);
+        let content_len = slide.content.lines.len();
+        self.draw_scrollbar(frame, area, content_len, content_area.height);
+
+        // Render images
+        let scroll = self.scroll_offset();
+        let images: Vec<_> = self.slides[self.current_page].images.clone();
+        for img in &images {
+            self.draw_image(frame, content_area, img.line_index, img.height, scroll, &img.path);
+        }
     }
 
-    fn draw_center(&self, frame: &mut Frame, area: Rect, slide: &Slide) {
+    fn draw_center(&mut self, frame: &mut Frame, area: Rect) {
+        let slide = &self.slides[self.current_page];
         let content_height = slide.content.lines.len() as u16;
         let content_area = area.inner(Margin::new(2, 1));
 
-        // Vertically center
         let [centered_area] = Layout::vertical([Constraint::Length(content_height)])
             .flex(Flex::Center)
             .areas(content_area);
@@ -124,9 +156,17 @@ impl App {
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_offset(), 0));
         frame.render_widget(paragraph, centered_area);
+
+        // Render images
+        let scroll = self.scroll_offset();
+        let images: Vec<_> = self.slides[self.current_page].images.clone();
+        for img in &images {
+            self.draw_image(frame, centered_area, img.line_index, img.height, scroll, &img.path);
+        }
     }
 
-    fn draw_two_column(&self, frame: &mut Frame, area: Rect, slide: &Slide) {
+    fn draw_two_column(&mut self, frame: &mut Frame, area: Rect) {
+        let slide = &self.slides[self.current_page];
         let content_area = area.inner(Margin::new(2, 1));
 
         let [left_area, _gap, right_area] = Layout::horizontal([
@@ -136,18 +176,47 @@ impl App {
         ])
         .areas(content_area);
 
-        // Left column
         let left_para = Paragraph::new(slide.content.clone())
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_offset(), 0));
         frame.render_widget(left_para, left_area);
 
-        // Right column
         if let Some(ref right) = slide.right_content {
             let right_para = Paragraph::new(right.clone())
                 .wrap(Wrap { trim: false })
                 .scroll((self.scroll_offset(), 0));
             frame.render_widget(right_para, right_area);
+        }
+    }
+
+    fn draw_image(
+        &mut self,
+        frame: &mut Frame,
+        content_area: Rect,
+        line_index: usize,
+        height: u16,
+        scroll: u16,
+        path: &str,
+    ) {
+        let y_start = line_index as i32 - scroll as i32;
+        let y_end = y_start + height as i32;
+
+        // Skip if completely out of view
+        if y_end <= 0 || y_start >= content_area.height as i32 {
+            return;
+        }
+
+        let y = (y_start.max(0) as u16) + content_area.y;
+        let h = (y_end.min(content_area.height as i32) - y_start.max(0)) as u16;
+
+        if h == 0 {
+            return;
+        }
+
+        let img_area = Rect::new(content_area.x, y, content_area.width, h);
+
+        if let Some(state) = self.image_states.get_mut(path) {
+            StatefulImage::default().render(img_area, frame.buffer_mut(), state);
         }
     }
 
@@ -197,10 +266,13 @@ impl App {
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).map(|s| s.as_str()).unwrap_or("main.md");
+    let base_dir = Path::new(path)
+        .parent()
+        .unwrap_or(Path::new("."));
     let markdown = std::fs::read_to_string(path)?;
 
     let terminal = ratatui::init();
-    let result = App::new(&markdown).run(terminal);
+    let result = App::new(&markdown, base_dir).run(terminal);
     ratatui::restore();
     result
 }

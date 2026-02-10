@@ -37,6 +37,12 @@ Press `→` to go to next slide.
 
 ---
 
+## Image Demo
+
+![demo](demo.png)
+
+---
+
 ## Code Block
 
 ```rust

@@ -10,13 +10,27 @@ pub enum SlideLayout {
     TwoColumn,
 }
 
+/// Image reference found in a slide.
+#[derive(Clone, Debug)]
+pub struct SlideImage {
+    pub path: String,
+    /// Line index in content where placeholder starts.
+    pub line_index: usize,
+    /// Number of placeholder lines reserved.
+    pub height: u16,
+}
+
 #[derive(Clone)]
 pub struct Slide {
     pub layout: SlideLayout,
     pub content: Text<'static>,
     /// Right column content (only for TwoColumn layout)
     pub right_content: Option<Text<'static>>,
+    /// Images in this slide.
+    pub images: Vec<SlideImage>,
 }
+
+const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
 
 /// Parse markdown into slides split by `---` (horizontal rule).
 pub fn parse_slides(input: &str) -> Vec<Slide> {
@@ -53,7 +67,9 @@ struct MdConverter {
     list_stack: Vec<ListKind>,
     in_code_block: bool,
     in_blockquote: bool,
+    in_image: bool,
     pending_layout: Option<SlideLayout>,
+    images: Vec<SlideImage>,
 }
 
 #[derive(Clone)]
@@ -72,7 +88,9 @@ impl MdConverter {
             list_stack: Vec::new(),
             in_code_block: false,
             in_blockquote: false,
+            in_image: false,
             pending_layout: None,
+            images: Vec::new(),
         }
     }
 
@@ -111,16 +129,19 @@ impl MdConverter {
             self.lines.pop();
         }
         let lines = std::mem::take(&mut self.lines);
+        let images = std::mem::take(&mut self.images);
         if !lines.is_empty() {
             let layout = self.pending_layout.take().unwrap_or_default();
-            let slide = match layout {
+            let mut slide = match layout {
                 SlideLayout::TwoColumn => split_two_column(lines),
                 _ => Slide {
                     layout,
                     content: Text::from(lines),
                     right_content: None,
+                    images: Vec::new(),
                 },
             };
+            slide.images = images;
             self.slides.push(slide);
         }
     }
@@ -131,6 +152,27 @@ impl MdConverter {
 
     fn process(&mut self, event: Event) {
         match event {
+            // --- Images ---
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                self.in_image = true;
+                if !self.current_spans.is_empty() {
+                    self.flush_line();
+                }
+                let line_index = self.lines.len();
+                self.images.push(SlideImage {
+                    path: dest_url.to_string(),
+                    line_index,
+                    height: IMAGE_PLACEHOLDER_HEIGHT,
+                });
+                // Insert placeholder lines
+                for _ in 0..IMAGE_PLACEHOLDER_HEIGHT {
+                    self.lines.push(Line::default());
+                }
+            }
+            Event::End(TagEnd::Image) => {
+                self.in_image = false;
+            }
+
             // --- HTML comments (layout directives) ---
             Event::Html(html) | Event::InlineHtml(html) => {
                 if let Some(layout) = parse_layout_comment(&html) {
@@ -252,7 +294,9 @@ impl MdConverter {
 
             // --- Text ---
             Event::Text(text) => {
-                if self.in_code_block {
+                if self.in_image {
+                    // Skip alt text of images
+                } else if self.in_code_block {
                     let style = Style::default().fg(Color::White).bg(Color::DarkGray);
                     for line in text.split('\n') {
                         if !self.current_spans.is_empty() {
@@ -285,6 +329,7 @@ impl MdConverter {
                 layout: SlideLayout::Default,
                 content: Text::from(self.lines),
                 right_content: None,
+                images: std::mem::take(&mut self.images),
             });
         }
         self.slides
@@ -317,12 +362,14 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 layout: SlideLayout::TwoColumn,
                 content: Text::from(left),
                 right_content: Some(Text::from(right)),
+                images: Vec::new(),
             }
         }
         None => Slide {
             layout: SlideLayout::TwoColumn,
             content: Text::from(lines),
             right_content: None,
+            images: Vec::new(),
         },
     }
 }
