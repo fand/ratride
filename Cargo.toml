@@ -1,0 +1,9 @@
+[package]
+name = "onishi50-slide"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui = "0.30"
+crossterm = "0.28"
+pulldown-cmark = "0.13"
