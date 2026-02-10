@@ -2,9 +2,20 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
+#[derive(Clone, Debug, Default)]
+pub enum SlideLayout {
+    #[default]
+    Default,
+    Center,
+    TwoColumn,
+}
+
 #[derive(Clone)]
 pub struct Slide {
+    pub layout: SlideLayout,
     pub content: Text<'static>,
+    /// Right column content (only for TwoColumn layout)
+    pub right_content: Option<Text<'static>>,
 }
 
 /// Parse markdown into slides split by `---` (horizontal rule).
@@ -21,6 +32,19 @@ pub fn parse_slides(input: &str) -> Vec<Slide> {
     converter.finish_slides()
 }
 
+fn parse_layout_comment(html: &str) -> Option<SlideLayout> {
+    let trimmed = html.trim();
+    let inner = trimmed.strip_prefix("<!--")?.strip_suffix("-->")?;
+    let inner = inner.trim();
+    let value = inner.strip_prefix("layout:")?.trim();
+    match value {
+        "center" => Some(SlideLayout::Center),
+        "two-column" => Some(SlideLayout::TwoColumn),
+        "default" => Some(SlideLayout::Default),
+        _ => None,
+    }
+}
+
 struct MdConverter {
     slides: Vec<Slide>,
     lines: Vec<Line<'static>>,
@@ -29,6 +53,7 @@ struct MdConverter {
     list_stack: Vec<ListKind>,
     in_code_block: bool,
     in_blockquote: bool,
+    pending_layout: Option<SlideLayout>,
 }
 
 #[derive(Clone)]
@@ -47,6 +72,7 @@ impl MdConverter {
             list_stack: Vec::new(),
             in_code_block: false,
             in_blockquote: false,
+            pending_layout: None,
         }
     }
 
@@ -86,9 +112,16 @@ impl MdConverter {
         }
         let lines = std::mem::take(&mut self.lines);
         if !lines.is_empty() {
-            self.slides.push(Slide {
-                content: Text::from(lines),
-            });
+            let layout = self.pending_layout.take().unwrap_or_default();
+            let slide = match layout {
+                SlideLayout::TwoColumn => split_two_column(lines),
+                _ => Slide {
+                    layout,
+                    content: Text::from(lines),
+                    right_content: None,
+                },
+            };
+            self.slides.push(slide);
         }
     }
 
@@ -98,6 +131,14 @@ impl MdConverter {
 
     fn process(&mut self, event: Event) {
         match event {
+            // --- HTML comments (layout directives) ---
+            Event::Html(html) | Event::InlineHtml(html) => {
+                if let Some(layout) = parse_layout_comment(&html) {
+                    self.pending_layout = Some(layout);
+                }
+                // Otherwise ignore HTML
+            }
+
             // --- Headings ---
             Event::Start(Tag::Heading { level, .. }) => {
                 let style = match level {
@@ -239,12 +280,49 @@ impl MdConverter {
 
     fn finish_slides(mut self) -> Vec<Slide> {
         self.flush_slide();
-        // If no --- was found, everything is one slide
         if self.slides.is_empty() && !self.lines.is_empty() {
             self.slides.push(Slide {
+                layout: SlideLayout::Default,
                 content: Text::from(self.lines),
+                right_content: None,
             });
         }
         self.slides
+    }
+}
+
+/// Split lines at `|||` marker into left/right columns for TwoColumn layout.
+fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
+    let sep_idx = lines.iter().position(|line| {
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        text.trim() == "|||"
+    });
+
+    match sep_idx {
+        Some(idx) => {
+            let mut left: Vec<Line<'static>> = lines[..idx].to_vec();
+            let mut right: Vec<Line<'static>> = lines[idx + 1..].to_vec();
+            // Trim trailing blanks
+            while left.last().is_some_and(|l| l.spans.is_empty()) {
+                left.pop();
+            }
+            while right.last().is_some_and(|l| l.spans.is_empty()) {
+                right.pop();
+            }
+            // Trim leading blanks from right
+            while right.first().is_some_and(|l| l.spans.is_empty()) {
+                right.remove(0);
+            }
+            Slide {
+                layout: SlideLayout::TwoColumn,
+                content: Text::from(left),
+                right_content: Some(Text::from(right)),
+            }
+        }
+        None => Slide {
+            layout: SlideLayout::TwoColumn,
+            content: Text::from(lines),
+            right_content: None,
+        },
     }
 }

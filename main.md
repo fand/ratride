@@ -1,3 +1,5 @@
+<!-- layout: center -->
+
 # onishi50-slide
 
 A **Markdown slide tool** built with *Ratatui* + tachyonFX.
@@ -13,6 +15,25 @@ Press `→` to go to next slide.
 - **Bold**, *Italic*, ~~Strikethrough~~
 - `inline code` support
 - Page navigation with `←`/`→`
+- Per-slide layouts
+
+---
+
+<!-- layout: two-column -->
+
+## Left Column
+
+- Item A
+- Item B
+- Item C
+
+|||
+
+## Right Column
+
+1. First
+2. Second
+3. Third
 
 ---
 
@@ -24,24 +45,11 @@ fn main() {
 }
 ```
 
-## Lists
-
-- Item 1
-- Item 2
-- Item 3
-
-1. First
-2. Second
-3. Third
-
----
-
-## Blockquote
-
 > This is a blockquote.
-> It can span multiple lines.
 
 ---
+
+<!-- layout: center -->
 
 # Thank you!
 

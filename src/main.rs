@@ -3,9 +3,9 @@ mod markdown;
 use std::io;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use markdown::Slide;
+use markdown::{Slide, SlideLayout};
 use ratatui::{
-    layout::{Constraint, Layout, Margin},
+    layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
     DefaultTerminal, Frame,
 };
@@ -70,31 +70,22 @@ impl App {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
         let slide = self.current_slide();
-        let content = &slide.content;
 
-        // Render slide content
-        let paragraph = Paragraph::new(content.clone())
-            .wrap(Wrap { trim: false })
-            .scroll((self.scroll_offset(), 0));
-        frame.render_widget(paragraph, main_area.inner(Margin::new(2, 1)));
-
-        // Scrollbar
-        let content_len = content.lines.len();
-        let visible = main_area.height.saturating_sub(2) as usize;
-        if content_len > visible {
-            let mut scrollbar_state =
-                ScrollbarState::new(content_len.saturating_sub(visible))
-                    .position(self.scroll_offset() as usize);
-            frame.render_stateful_widget(
-                Scrollbar::new(ScrollbarOrientation::VerticalRight),
-                main_area,
-                &mut scrollbar_state,
-            );
+        match slide.layout {
+            SlideLayout::Default => self.draw_default(frame, main_area, slide),
+            SlideLayout::Center => self.draw_center(frame, main_area, slide),
+            SlideLayout::TwoColumn => self.draw_two_column(frame, main_area, slide),
         }
 
         // Status bar
+        let layout_label = match slide.layout {
+            SlideLayout::Default => "",
+            SlideLayout::Center => " [center]",
+            SlideLayout::TwoColumn => " [two-column]",
+        };
         let status = format!(
-            " ←/→:page  j/k:scroll  q:quit    [{}/{}]",
+            " ←/→:page  j/k:scroll  q:quit{}    [{}/{}]",
+            layout_label,
             self.current_page + 1,
             self.total_pages()
         );
@@ -106,6 +97,71 @@ impl App {
             ),
             status_area,
         );
+    }
+
+    fn draw_default(&self, frame: &mut Frame, area: Rect, slide: &Slide) {
+        let content_area = area.inner(Margin::new(2, 1));
+
+        let paragraph = Paragraph::new(slide.content.clone())
+            .wrap(Wrap { trim: false })
+            .scroll((self.scroll_offset(), 0));
+        frame.render_widget(paragraph, content_area);
+
+        self.draw_scrollbar(frame, area, slide.content.lines.len(), content_area.height);
+    }
+
+    fn draw_center(&self, frame: &mut Frame, area: Rect, slide: &Slide) {
+        let content_height = slide.content.lines.len() as u16;
+        let content_area = area.inner(Margin::new(2, 1));
+
+        // Vertically center
+        let [centered_area] = Layout::vertical([Constraint::Length(content_height)])
+            .flex(Flex::Center)
+            .areas(content_area);
+
+        let paragraph = Paragraph::new(slide.content.clone())
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: false })
+            .scroll((self.scroll_offset(), 0));
+        frame.render_widget(paragraph, centered_area);
+    }
+
+    fn draw_two_column(&self, frame: &mut Frame, area: Rect, slide: &Slide) {
+        let content_area = area.inner(Margin::new(2, 1));
+
+        let [left_area, _gap, right_area] = Layout::horizontal([
+            Constraint::Percentage(48),
+            Constraint::Percentage(4),
+            Constraint::Percentage(48),
+        ])
+        .areas(content_area);
+
+        // Left column
+        let left_para = Paragraph::new(slide.content.clone())
+            .wrap(Wrap { trim: false })
+            .scroll((self.scroll_offset(), 0));
+        frame.render_widget(left_para, left_area);
+
+        // Right column
+        if let Some(ref right) = slide.right_content {
+            let right_para = Paragraph::new(right.clone())
+                .wrap(Wrap { trim: false })
+                .scroll((self.scroll_offset(), 0));
+            frame.render_widget(right_para, right_area);
+        }
+    }
+
+    fn draw_scrollbar(&self, frame: &mut Frame, area: Rect, content_len: usize, visible: u16) {
+        let visible = visible as usize;
+        if content_len > visible {
+            let mut scrollbar_state = ScrollbarState::new(content_len.saturating_sub(visible))
+                .position(self.scroll_offset() as usize);
+            frame.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight),
+                area,
+                &mut scrollbar_state,
+            );
+        }
     }
 
     fn handle_event(&mut self) -> io::Result<()> {
