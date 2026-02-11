@@ -1,4 +1,4 @@
-# onishi50-slide 実装プラン
+# ratride 実装プラン
 
 Ratatui + tachyonFX によるMarkdownスライドツール。
 

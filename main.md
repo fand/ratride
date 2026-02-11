@@ -1,6 +1,6 @@
 <!-- layout: center -->
 
-# onishi50-slide
+# ratride
 
 A **Markdown slide tool** built with *Ratatui* + tachyonFX.
 
