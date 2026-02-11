@@ -2,6 +2,14 @@
 name = "ratride"
 version = "0.1.0"
 edition = "2024"
+description = "A tiny terminal-based Markdown slide presenter built with ratatui"
+license = "MIT"
+repository = "https://github.com/fand/ratride"
+readme = "README.md"
+keywords = ["slides", "presentation", "terminal", "tui", "markdown"]
+categories = ["command-line-utilities"]
+rust-version = "1.85"
+exclude = ["demo.png", "main.md", "test.md", "PLAN.md"]
 
 [dependencies]
 ratatui = "0.30"

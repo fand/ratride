@@ -9,10 +9,16 @@ A tiny slide presenter built with [ratatui](https://github.com/ratatui/ratatui).
 - Slide transitions (fade, dissolve, sweep, etc.)
 - Image display (iTerm2 / Kitty / Sixel)
 
+## Install
+
+```
+cargo install ratride
+```
+
 ## Usage
 
 ```
-cargo run -- slides.md
+ratride slides.md
 ```
 
 ## Need more?

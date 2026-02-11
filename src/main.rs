@@ -428,7 +428,13 @@ impl App {
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    let path = args.get(1).map(|s| s.as_str()).unwrap_or("main.md");
+    let path = match args.get(1) {
+        Some(s) => s.as_str(),
+        None => {
+            eprintln!("Usage: ratride <slides.md>");
+            std::process::exit(1);
+        }
+    };
     let base_dir = Path::new(path).parent().unwrap_or(Path::new("."));
     let markdown = std::fs::read_to_string(path)?;
 
