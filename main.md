@@ -19,6 +19,9 @@ Press `→` to go to next slide.
 - Page navigation with `←`/`→`
 - Per-slide layouts & transitions
 
+![](./demo.png)
+
+
 ---
 
 <!-- layout: two-column -->

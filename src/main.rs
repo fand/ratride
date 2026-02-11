@@ -1,10 +1,12 @@
 mod markdown;
 
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 use std::time::Instant;
 
+use base64::{Engine, engine::general_purpose::STANDARD};
+use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use markdown::{Slide, SlideLayout, TransitionKind};
 use ratatui::{
@@ -18,15 +20,52 @@ use tachyonfx::{fx, Duration, Effect, EffectRenderer, Interpolation, Motion};
 
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
 
+/// Detect if the terminal supports iTerm2 inline image protocol.
+fn is_iterm2() -> bool {
+    if let Ok(term) = std::env::var("TERM_PROGRAM") {
+        if term.contains("iTerm") || term.contains("WezTerm") {
+            return true;
+        }
+    }
+    if let Ok(lc) = std::env::var("LC_TERMINAL") {
+        if lc.contains("iTerm") {
+            return true;
+        }
+    }
+    false
+}
+
+enum ImageBackend {
+    /// Write iTerm2 escape sequences directly to stdout (presenterm-style).
+    Iterm2 {
+        images: HashMap<String, Vec<u8>>,
+    },
+    /// Use ratatui-image for Kitty/Sixel/Halfblocks.
+    RatatuiImage {
+        states: HashMap<String, StatefulProtocol>,
+    },
+}
+
 struct App {
     slides: Vec<Slide>,
     current_page: usize,
     scroll_offsets: Vec<u16>,
     quit: bool,
-    image_states: HashMap<String, StatefulProtocol>,
+    image_backend: ImageBackend,
     /// Active transition effect.
     effect: Option<Effect>,
     last_frame: Instant,
+    /// Deferred image draws (collected during draw, flushed after ratatui render).
+    pending_images: Vec<PendingImage>,
+}
+
+#[derive(Clone)]
+struct PendingImage {
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    path: String,
 }
 
 impl App {
@@ -34,33 +73,54 @@ impl App {
         let slides = markdown::parse_slides(markdown);
         let len = slides.len().max(1);
 
-        let mut image_states: HashMap<String, StatefulProtocol> = HashMap::new();
-        let picker = Picker::from_query_stdio().ok();
-        if let Some(picker) = picker {
+        let image_backend = if is_iterm2() {
+            // Load raw image bytes for iTerm2 direct rendering.
+            let mut images: HashMap<String, Vec<u8>> = HashMap::new();
             for slide in &slides {
                 for img in &slide.images {
-                    if image_states.contains_key(&img.path) {
+                    if images.contains_key(&img.path) {
                         continue;
                     }
                     let img_path = base_dir.join(&img.path);
-                    if let Ok(dyn_img) = image::ImageReader::open(&img_path)
-                        .and_then(|r| r.decode().map_err(|e| io::Error::new(io::ErrorKind::Other, e)))
-                    {
-                        let protocol = picker.new_resize_protocol(dyn_img);
-                        image_states.insert(img.path.clone(), protocol);
+                    if let Ok(data) = std::fs::read(&img_path) {
+                        images.insert(img.path.clone(), data);
                     }
                 }
             }
-        }
+            ImageBackend::Iterm2 { images }
+        } else {
+            // Use ratatui-image for other terminals.
+            let mut states: HashMap<String, StatefulProtocol> = HashMap::new();
+            let picker = Picker::from_query_stdio().ok();
+            if let Some(picker) = picker {
+                for slide in &slides {
+                    for img in &slide.images {
+                        if states.contains_key(&img.path) {
+                            continue;
+                        }
+                        let img_path = base_dir.join(&img.path);
+                        if let Ok(dyn_img) = image::ImageReader::open(&img_path).and_then(|r| {
+                            r.decode()
+                                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                        }) {
+                            let protocol = picker.new_resize_protocol(dyn_img);
+                            states.insert(img.path.clone(), protocol);
+                        }
+                    }
+                }
+            }
+            ImageBackend::RatatuiImage { states }
+        };
 
         Self {
             slides,
             current_page: 0,
             scroll_offsets: vec![0; len],
             quit: false,
-            image_states,
+            image_backend,
             effect: None,
             last_frame: Instant::now(),
+            pending_images: Vec::new(),
         }
     }
 
@@ -97,20 +157,14 @@ impl App {
     fn create_transition(&self) -> Effect {
         let slide = &self.slides[self.current_page];
         match slide.transition {
-            TransitionKind::SlideIn => fx::fade_from_fg(
-                Color::Black,
-                (400, Interpolation::QuadOut),
-            ),
-            TransitionKind::Fade => fx::fade_from_fg(
-                Color::Black,
-                (600, Interpolation::SineOut),
-            ),
-            TransitionKind::Dissolve => fx::dissolve(
-                (500, Interpolation::Linear),
-            ).reversed(),
-            TransitionKind::Coalesce => fx::coalesce(
-                (500, Interpolation::QuadOut),
-            ),
+            TransitionKind::SlideIn => {
+                fx::fade_from_fg(Color::Black, (400, Interpolation::QuadOut))
+            }
+            TransitionKind::Fade => fx::fade_from_fg(Color::Black, (600, Interpolation::SineOut)),
+            TransitionKind::Dissolve => {
+                fx::dissolve((500, Interpolation::Linear)).reversed()
+            }
+            TransitionKind::Coalesce => fx::coalesce((500, Interpolation::QuadOut)),
             TransitionKind::SweepIn => fx::sweep_in(
                 Motion::LeftToRight,
                 15,
@@ -124,14 +178,45 @@ impl App {
     fn run(mut self, mut terminal: DefaultTerminal) -> io::Result<()> {
         self.last_frame = Instant::now();
         while !self.quit {
+            self.pending_images.clear();
             terminal.draw(|frame| self.draw(frame))?;
+            // Flush iTerm2 images after transition completes to avoid flickering.
+            if self.effect.is_none() {
+                self.flush_iterm2_images()?;
+            }
             self.handle_events()?;
-            // Sleep to maintain frame rate
             let elapsed = self.last_frame.elapsed();
             if elapsed < FRAME_DURATION {
                 std::thread::sleep(FRAME_DURATION - elapsed);
             }
             self.last_frame = Instant::now();
+        }
+        Ok(())
+    }
+
+    /// Write iTerm2 inline image escape sequences directly to stdout.
+    fn flush_iterm2_images(&self) -> io::Result<()> {
+        if let ImageBackend::Iterm2 { ref images } = self.image_backend {
+            let pending = &self.pending_images;
+            if pending.is_empty() {
+                return Ok(());
+            }
+            let mut stdout = io::stdout();
+            for img in pending {
+                if let Some(data) = images.get(&img.path) {
+                    crossterm::execute!(stdout, MoveTo(img.x, img.y))?;
+                    let b64 = STANDARD.encode(data);
+                    write!(
+                        stdout,
+                        "\x1b]1337;File=size={};width={};height={};inline=1;preserveAspectRatio=1:{}\x07",
+                        data.len(),
+                        img.width,
+                        img.height,
+                        b64,
+                    )?;
+                    stdout.flush()?;
+                }
+            }
         }
         Ok(())
     }
@@ -218,7 +303,14 @@ impl App {
         let scroll = self.scroll_offset();
         let images: Vec<_> = self.slides[self.current_page].images.clone();
         for img in &images {
-            self.draw_image(frame, centered_area, img.line_index, img.height, scroll, &img.path);
+            self.draw_image(
+                frame,
+                centered_area,
+                img.line_index,
+                img.height,
+                scroll,
+                &img.path,
+            );
         }
     }
 
@@ -271,8 +363,22 @@ impl App {
 
         let img_area = Rect::new(content_area.x, y, content_area.width, h);
 
-        if let Some(state) = self.image_states.get_mut(path) {
-            StatefulImage::default().render(img_area, frame.buffer_mut(), state);
+        match &mut self.image_backend {
+            ImageBackend::Iterm2 { .. } => {
+                // Defer to flush_iterm2_images() after ratatui render.
+                self.pending_images.push(PendingImage {
+                    x: img_area.x,
+                    y: img_area.y,
+                    width: img_area.width,
+                    height: img_area.height,
+                    path: path.to_string(),
+                });
+            }
+            ImageBackend::RatatuiImage { states } => {
+                if let Some(state) = states.get_mut(path) {
+                    StatefulImage::default().render(img_area, frame.buffer_mut(), state);
+                }
+            }
         }
     }
 
@@ -323,9 +429,7 @@ impl App {
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).map(|s| s.as_str()).unwrap_or("main.md");
-    let base_dir = Path::new(path)
-        .parent()
-        .unwrap_or(Path::new("."));
+    let base_dir = Path::new(path).parent().unwrap_or(Path::new("."));
     let markdown = std::fs::read_to_string(path)?;
 
     let terminal = ratatui::init();
