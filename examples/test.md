@@ -1,4 +1,5 @@
 <!-- layout: center -->
+<!-- transition: fade -->
 
 # ratride
 
