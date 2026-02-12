@@ -6,7 +6,10 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:crates.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:mfontanini.github.io)"
+      "WebFetch(domain:mfontanini.github.io)",
+      "WebFetch(domain:orhun.dev)",
+      "Bash(echo:*)",
+      "Bash(git add:*)"
     ]
   }
 }

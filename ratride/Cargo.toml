@@ -1,0 +1,22 @@
+[package]
+name = "ratride"
+version = "0.1.0"
+edition = "2024"
+description = "A tiny terminal-based Markdown slide presenter built with ratatui"
+license = "MIT"
+repository = "https://github.com/fand/ratride"
+readme = "../README.md"
+keywords = ["slides", "presentation", "terminal", "tui", "markdown"]
+categories = ["command-line-utilities"]
+rust-version = "1.85"
+exclude = ["../demo.png", "../main.md", "../test.md", "../PLAN.md"]
+
+[dependencies]
+ratride-core = { path = "../ratride-core" }
+ratatui = "0.30"
+crossterm = "0.28"
+ratatui-image = { version = "10", default-features = false, features = ["image-defaults", "crossterm"] }
+image = "0.25"
+tachyonfx = "0.23"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }

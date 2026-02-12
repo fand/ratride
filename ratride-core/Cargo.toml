@@ -1,0 +1,9 @@
+[package]
+name = "ratride-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ratatui = { version = "0.30", default-features = false }
+pulldown-cmark = "0.13"

@@ -1,5 +1,6 @@
+use crate::theme::Theme;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
 #[derive(Clone, Debug, Default)]
@@ -45,13 +46,13 @@ pub struct Slide {
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
 
 /// Parse markdown into slides split by `---` (horizontal rule).
-pub fn parse_slides(input: &str) -> Vec<Slide> {
+pub fn parse_slides(input: &str, theme: &Theme) -> Vec<Slide> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
     let parser = Parser::new_ext(input, options);
-    let mut converter = MdConverter::new();
+    let mut converter = MdConverter::new(theme.clone());
     for event in parser {
         converter.process(event);
     }
@@ -90,6 +91,7 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
 }
 
 struct MdConverter {
+    theme: Theme,
     slides: Vec<Slide>,
     lines: Vec<Line<'static>>,
     current_spans: Vec<Span<'static>>,
@@ -110,12 +112,14 @@ enum ListKind {
 }
 
 impl MdConverter {
-    fn new() -> Self {
+    fn new(theme: Theme) -> Self {
+        let base_style = Style::default().fg(theme.fg);
         Self {
+            theme,
             slides: Vec::new(),
             lines: Vec::new(),
             current_spans: Vec::new(),
-            style_stack: vec![Style::default()],
+            style_stack: vec![base_style],
             list_stack: Vec::new(),
             in_code_block: false,
             in_blockquote: false,
@@ -144,7 +148,7 @@ impl MdConverter {
     fn flush_line(&mut self) {
         let spans = std::mem::take(&mut self.current_spans);
         if self.in_blockquote {
-            let mut bq_spans = vec![Span::styled("│ ", Style::default().fg(Color::DarkGray))];
+            let mut bq_spans = vec![Span::styled("│ ", Style::default().fg(self.theme.block_quote_prefix))];
             bq_spans.extend(spans);
             self.lines.push(Line::from(bq_spans));
         } else {
@@ -225,15 +229,17 @@ impl MdConverter {
             Event::Start(Tag::Heading { level, .. }) => {
                 let style = match level {
                     HeadingLevel::H1 => Style::default()
-                        .fg(Color::Cyan)
+                        .fg(self.theme.h1)
                         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
                     HeadingLevel::H2 => Style::default()
-                        .fg(Color::Green)
+                        .fg(self.theme.h2)
                         .add_modifier(Modifier::BOLD),
                     HeadingLevel::H3 => Style::default()
-                        .fg(Color::Yellow)
+                        .fg(self.theme.h3)
                         .add_modifier(Modifier::BOLD),
-                    _ => Style::default().add_modifier(Modifier::BOLD),
+                    _ => Style::default()
+                        .fg(self.theme.h4)
+                        .add_modifier(Modifier::BOLD),
                 };
                 self.push_style(|_| style);
             }
@@ -268,7 +274,7 @@ impl MdConverter {
 
             // --- Code ---
             Event::Code(code) => {
-                let style = Style::default().fg(Color::Red).bg(Color::DarkGray);
+                let style = Style::default().fg(self.theme.inline_code_fg).bg(self.theme.surface);
                 self.current_spans
                     .push(Span::styled(format!(" {code} "), style));
             }
@@ -312,7 +318,7 @@ impl MdConverter {
                     None => String::new(),
                 };
                 self.current_spans
-                    .push(Span::styled(bullet, Style::default().fg(Color::DarkGray)));
+                    .push(Span::styled(bullet, Style::default().fg(self.theme.list_bullet)));
             }
             Event::End(TagEnd::Item) => {
                 self.flush_line();
@@ -337,7 +343,7 @@ impl MdConverter {
                 if self.in_image {
                     // Skip alt text of images
                 } else if self.in_code_block {
-                    let style = Style::default().fg(Color::White).bg(Color::DarkGray);
+                    let style = Style::default().fg(self.theme.fg).bg(self.theme.surface);
                     for line in text.split('\n') {
                         if !self.current_spans.is_empty() {
                             self.flush_line();

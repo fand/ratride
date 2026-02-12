@@ -1,4 +1,7 @@
-# ratride
+<div align="center">
+    <img src="./ratride_logo.png" width="480" />
+    <h1>ratride</h1>
+</div>
 
 A tiny slide presenter built with [ratatui](https://github.com/ratatui/ratatui).
 
