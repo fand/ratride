@@ -12,8 +12,8 @@ rust-version = "1.85"
 exclude = ["../demo.png", "../main.md", "../test.md", "../PLAN.md"]
 
 [dependencies]
-ratride-core = { path = "../ratride-core" }
 ratatui = "0.30"
+pulldown-cmark = "0.13"
 crossterm = "0.28"
 ratatui-image = { version = "10", default-features = false, features = ["image-defaults", "crossterm"] }
 image = "0.25"

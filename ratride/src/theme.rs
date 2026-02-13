@@ -91,14 +91,6 @@ impl Theme {
             status_bg: hex("ccd0da"),
         }
     }
-
-    /// CSS hex string for the background color (e.g. "#1e1e2e").
-    pub fn bg_hex(&self) -> String {
-        match self.bg {
-            Color::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b),
-            _ => "#000000".to_string(),
-        }
-    }
 }
 
 impl Default for Theme {

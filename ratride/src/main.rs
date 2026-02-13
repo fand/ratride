@@ -1,3 +1,7 @@
+mod markdown;
+mod render;
+mod theme;
+
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
@@ -8,9 +12,9 @@ use clap::Parser;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratride_core::markdown::{Slide, TransitionKind, parse_slides};
-use ratride_core::render::{self, ImagePlacement};
-use ratride_core::theme::{self, Theme};
+use crate::markdown::{Slide, TransitionKind, parse_slides};
+use crate::render::ImagePlacement;
+use crate::theme::Theme;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     widgets::StatefulWidget,
@@ -298,40 +302,13 @@ struct Cli {
     /// Path to the Markdown slide file
     file: String,
 
-    /// Serve slides in browser via Ratzilla (requires trunk)
-    #[arg(long)]
-    web: bool,
-
     /// Theme name [mocha (default), macchiato, frappe, latte]
     #[arg(long, value_name = "NAME")]
     theme: Option<String>,
 }
 
-fn run_web(file: &str) -> io::Result<()> {
-    if std::process::Command::new("trunk")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        eprintln!("trunk is required. Install: cargo install trunk");
-        std::process::exit(1);
-    }
-    let md_path = std::fs::canonicalize(file)?;
-    let web_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../ratride-web");
-    std::process::Command::new("trunk")
-        .args(["serve"])
-        .env("RATRIDE_SLIDE_FILE", &md_path)
-        .current_dir(&web_dir)
-        .status()?;
-    Ok(())
-}
-
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
-
-    if cli.web {
-        return run_web(&cli.file);
-    }
 
     let path = &cli.file;
     let base_dir = Path::new(path).parent().unwrap_or(Path::new("."));

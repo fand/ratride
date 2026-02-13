@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["ratride", "ratride-web", "ratride-core"]
+members = ["ratride"]
