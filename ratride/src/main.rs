@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use clap::Parser;
 
-use crate::markdown::{Slide, TransitionKind, parse_slides};
+use crate::markdown::{Frontmatter, Slide, TransitionKind, parse_frontmatter, parse_slides};
 use crate::render::ImagePlacement;
 use crate::theme::Theme;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -134,8 +134,8 @@ struct App {
 }
 
 impl App {
-    fn new(markdown: &str, base_dir: &Path, theme: Theme) -> Self {
-        let mut slides = parse_slides(markdown, &theme);
+    fn new(markdown: &str, base_dir: &Path, theme: Theme, frontmatter: &Frontmatter) -> Self {
+        let mut slides = parse_slides(markdown, &theme, frontmatter);
         let len = slides.len().max(1);
 
         // Collect image pixel dimensions for centering.
@@ -645,15 +645,22 @@ fn main() -> io::Result<()> {
     let base_dir = Path::new(path).parent().unwrap_or(Path::new("."));
     let markdown = std::fs::read_to_string(path)?;
 
+    let (frontmatter, body) = parse_frontmatter(&markdown);
+
     let theme = cli
         .theme
         .as_deref()
         .and_then(theme::theme_from_name)
-        .or_else(|| theme::theme_from_markdown(&markdown))
+        .or_else(|| {
+            frontmatter
+                .theme
+                .as_deref()
+                .and_then(theme::theme_from_name)
+        })
         .unwrap_or_default();
 
     let terminal = ratatui::init();
-    let result = App::new(&markdown, base_dir, theme).run(terminal);
+    let result = App::new(body, base_dir, theme, &frontmatter).run(terminal);
     ratatui::restore();
     result
 }
