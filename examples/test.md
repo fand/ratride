@@ -58,6 +58,36 @@ fn main() {
 
 ---
 
+<!-- transition: lines -->
+
+## Lines Transition
+
+This slide uses the **lines** transition.
+
+Each line is revealed left-to-right with staggered timing.
+
+---
+
+<!-- transition: lines-cross -->
+
+## Lines-Cross Transition
+
+This slide uses the **lines-cross** transition.
+
+Even lines reveal left-to-right, odd lines right-to-left.
+
+---
+
+<!-- transition: slide-rgb -->
+
+## Slide-RGB Transition
+
+This slide uses the **slide-rgb** transition.
+
+A color-cycling leading edge sweeps from left to right.
+
+---
+
 <!-- layout: center -->
 <!-- transition: dissolve -->
 
