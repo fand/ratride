@@ -10,7 +10,8 @@
       "WebFetch(domain:orhun.dev)",
       "Bash(echo:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(rustc:*)"
     ]
   }
 }
