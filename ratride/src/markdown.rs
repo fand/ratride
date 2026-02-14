@@ -21,6 +21,7 @@ pub enum TransitionKind {
     SweepIn,
     Lines,
     LinesCross,
+    LinesRgb,
     SlideRgb,
 }
 
@@ -88,6 +89,7 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
             "sweep" | "sweep-in" => TransitionKind::SweepIn,
             "lines" => TransitionKind::Lines,
             "lines-cross" => TransitionKind::LinesCross,
+            "lines-rgb" => TransitionKind::LinesRgb,
             "slide-rgb" => TransitionKind::SlideRgb,
             _ => TransitionKind::SlideIn,
         };

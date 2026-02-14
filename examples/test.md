@@ -88,6 +88,16 @@ A color-cycling leading edge sweeps from left to right.
 
 ---
 
+<!-- transition: lines-rgb -->
+
+## Lines-RGB Transition
+
+This slide uses the **lines-rgb** transition.
+
+Hey Hey Yo Yo.
+
+---
+
 <!-- layout: center -->
 <!-- transition: dissolve -->
 
