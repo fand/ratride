@@ -1,6 +1,6 @@
 [package]
 name = "ratride"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "A tiny terminal-based Markdown slide presenter built with ratatui"
 license = "MIT"
