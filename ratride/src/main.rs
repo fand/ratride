@@ -194,6 +194,34 @@ impl App {
             }
         }
 
+        // Shrink placeholder lines for images constrained by max_width_percent.
+        let (term_w, _) = crossterm::terminal::size().unwrap_or((80, 24));
+        let content_w = term_w.saturating_sub(4) as f64; // approx content area width
+        for slide in &mut slides {
+            let mut removed_total: usize = 0;
+            for img in &mut slide.images {
+                img.line_index -= removed_total;
+                if let Some(pct) = img.max_width_percent {
+                    if img.pixel_width > 0 && img.pixel_height > 0 {
+                        let max_w = content_w * pct.clamp(0.0, 1.0);
+                        let cell_aspect = 2.0_f64;
+                        let new_h = (max_w * img.pixel_height as f64
+                            / img.pixel_width as f64
+                            / cell_aspect)
+                            .ceil() as u16;
+                        let new_h = new_h.max(1).min(img.height);
+                        let to_remove = (img.height - new_h) as usize;
+                        if to_remove > 0 {
+                            let start = img.line_index + new_h as usize;
+                            slide.content.lines.drain(start..start + to_remove);
+                            removed_total += to_remove;
+                            img.height = new_h;
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
             slides,
             current_page: 0,

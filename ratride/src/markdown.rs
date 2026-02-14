@@ -39,6 +39,8 @@ pub struct SlideImage {
     /// Original pixel dimensions (filled after image loading).
     pub pixel_width: u32,
     pub pixel_height: u32,
+    /// Max display width as percentage of content area (0.0–1.0).
+    pub max_width_percent: Option<f64>,
 }
 
 #[derive(Clone)]
@@ -73,6 +75,7 @@ enum CommentDirective {
     Layout(SlideLayout),
     Transition(TransitionKind),
     Figlet(Option<String>),
+    ImageMaxWidth(f64),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -108,6 +111,12 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     if let Some(font) = inner.strip_prefix("figlet:") {
         return Some(CommentDirective::Figlet(Some(font.trim().to_string())));
     }
+    if let Some(value) = inner.strip_prefix("image_max_width:") {
+        let value = value.trim().trim_end_matches('%');
+        if let Ok(pct) = value.parse::<f64>() {
+            return Some(CommentDirective::ImageMaxWidth(pct / 100.0));
+        }
+    }
     None
 }
 
@@ -127,6 +136,7 @@ struct MdConverter {
     in_heading: bool,
     heading_text_buf: String,
     images: Vec<SlideImage>,
+    pending_image_max_width: Option<f64>,
 }
 
 #[derive(Clone)]
@@ -154,6 +164,7 @@ impl MdConverter {
             in_heading: false,
             heading_text_buf: String::new(),
             images: Vec::new(),
+            pending_image_max_width: None,
         }
     }
 
@@ -235,6 +246,7 @@ impl MdConverter {
                     height: IMAGE_PLACEHOLDER_HEIGHT,
                     pixel_width: 0,
                     pixel_height: 0,
+                    max_width_percent: self.pending_image_max_width.take(),
                 });
                 // Insert placeholder lines
                 for _ in 0..IMAGE_PLACEHOLDER_HEIGHT {
@@ -255,6 +267,9 @@ impl MdConverter {
                 }
                 Some(CommentDirective::Figlet(font)) => {
                     self.pending_figlet = Some(font);
+                }
+                Some(CommentDirective::ImageMaxWidth(pct)) => {
+                    self.pending_image_max_width = Some(pct);
                 }
                 None => {}
             },

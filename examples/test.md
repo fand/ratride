@@ -1,5 +1,6 @@
 <!-- layout: center -->
 <!-- figlet -->
+<!-- image_max_width: 40% -->
 
 ![](./ratride_logo_outline.png)
 
@@ -71,6 +72,13 @@ fn main() {
 This slide uses the **lines** transition.
 
 Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
+Each line is revealed left-to-right with staggered timing.
 
 ---
 
@@ -79,6 +87,10 @@ Each line is revealed left-to-right with staggered timing.
 ## Lines-Cross Transition
 
 This slide uses the **lines-cross** transition.
+Even lines reveal left-to-right, odd lines right-to-left.
+Even lines reveal left-to-right, odd lines right-to-left.
+Even lines reveal left-to-right, odd lines right-to-left.
+Even lines reveal left-to-right, odd lines right-to-left.
 Even lines reveal left-to-right, odd lines right-to-left.
 Even lines reveal left-to-right, odd lines right-to-left.
 Even lines reveal left-to-right, odd lines right-to-left.
@@ -102,6 +114,10 @@ A color-cycling leading edge sweeps from left to right.
 
 This slide uses the **lines-rgb** transition.
 
+Just like `Lines` transition, but with color rotating effect.
+Just like `Lines` transition, but with color rotating effect.
+Just like `Lines` transition, but with color rotating effect.
+Just like `Lines` transition, but with color rotating effect.
 Just like `Lines` transition, but with color rotating effect.
 Just like `Lines` transition, but with color rotating effect.
 Just like `Lines` transition, but with color rotating effect.

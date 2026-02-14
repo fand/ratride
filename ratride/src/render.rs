@@ -53,7 +53,7 @@ pub fn draw_default(
 
     let mut placements = Vec::new();
     for img in &slide.images {
-        if let Some(p) = compute_image_placement(content_area, img.line_index, img.height, scroll, &img.path, false, 0, 0) {
+        if let Some(p) = compute_image_placement(content_area, img.line_index, img.height, scroll, &img.path, false, 0, 0, img.max_width_percent) {
             placements.push(p);
         }
     }
@@ -81,7 +81,7 @@ pub fn draw_center(
 
     let mut placements = Vec::new();
     for img in &slide.images {
-        if let Some(p) = compute_image_placement(centered_area, img.line_index, img.height, scroll, &img.path, true, img.pixel_width, img.pixel_height) {
+        if let Some(p) = compute_image_placement(centered_area, img.line_index, img.height, scroll, &img.path, true, img.pixel_width, img.pixel_height, img.max_width_percent) {
             placements.push(p);
         }
     }
@@ -171,6 +171,7 @@ fn compute_image_placement(
     center: bool,
     pixel_width: u32,
     pixel_height: u32,
+    max_width_percent: Option<f64>,
 ) -> Option<ImagePlacement> {
     let y_start = line_index as i32 - scroll as i32;
     let y_end = y_start + height as i32;
@@ -186,17 +187,30 @@ fn compute_image_placement(
         return None;
     }
 
+    // Apply max_width_percent constraint
+    let max_w = if let Some(pct) = max_width_percent {
+        ((content_area.width as f64) * pct.clamp(0.0, 1.0)) as u16
+    } else {
+        content_area.width
+    };
+
     let (x, w) = if center && pixel_width > 0 && pixel_height > 0 {
         // Estimate display width in cells from aspect ratio.
         // Terminal cells are typically ~2x taller than wide in pixels.
         let cell_aspect = 2.0_f64;
         let display_w =
             ((h as f64) * (pixel_width as f64) / (pixel_height as f64) * cell_aspect) as u16;
-        let display_w = display_w.min(content_area.width);
+        let display_w = display_w.min(max_w);
         let x_offset = (content_area.width.saturating_sub(display_w)) / 2;
         (content_area.x + x_offset, display_w)
     } else {
-        (content_area.x, content_area.width)
+        let w = max_w;
+        let x_offset = if max_width_percent.is_some() {
+            (content_area.width.saturating_sub(w)) / 2
+        } else {
+            0
+        };
+        (content_area.x + x_offset, w)
     };
 
     Some(ImagePlacement {
