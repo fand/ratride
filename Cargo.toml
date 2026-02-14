@@ -1,3 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["ratride"]
+
+[workspace.metadata.release]
+publish = true
+push = true
+tag = true
+tag-prefix = "v"
