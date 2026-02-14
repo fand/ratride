@@ -10,7 +10,6 @@ A **Markdown slide tool** built with *Ratatui* + tachyonFX.
 Press `→` to go to next slide.
 
 ---
-
 <!-- transition: fade -->
 
 ## Features
@@ -22,8 +21,13 @@ Press `→` to go to next slide.
 - Page navigation with `←`/`→`
 - Per-slide layouts & transitions
 
-![](./demo.png)
+---
 
+## Image support
+
+Ratride supports image output for iTerm2 / Kitty protocols.
+
+![](./demo.png)
 
 ---
 
@@ -98,7 +102,11 @@ A color-cycling leading edge sweeps from left to right.
 
 This slide uses the **lines-rgb** transition.
 
-Hey Hey Yo Yo.
+Just like `Lines` transition, but with color rotating effect.
+Just like `Lines` transition, but with color rotating effect.
+Just like `Lines` transition, but with color rotating effect.
+Just like `Lines` transition, but with color rotating effect.
+
 
 ---
 
