@@ -28,6 +28,8 @@ use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
 
 /// Linearly blend two colors. At t=0 returns `a`, at t=1 returns `b`.
+/// Non-RGB colors (e.g. Color::Reset) are returned as-is to avoid
+/// introducing explicit background colors where the terminal default is used.
 fn blend_color(a: Color, b: Color, t: f32) -> Color {
     match (a, b) {
         (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
@@ -38,9 +40,7 @@ fn blend_color(a: Color, b: Color, t: f32) -> Color {
                 (ab as f32 * inv + bb as f32 * t) as u8,
             )
         }
-        _ => {
-            if t > 0.5 { b } else { a }
-        }
+        _ => b,
     }
 }
 
@@ -188,22 +188,24 @@ impl App {
             ),
             TransitionKind::Lines => {
                 let prev = prev_buf.clone();
+                let line_dur_ms = 500.0_f32; // how long each line's slide-in takes
+                let stagger_ms = 50.0_f32; // delay before next line starts
+                let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
+                let approx_lines = term_h as f32; // slightly overestimate for safety
+                let duration_ms = line_dur_ms + stagger_ms * (approx_lines - 1.0).max(0.0);
                 fx::effect_fn_buf(
                     (),
-                    (700, Interpolation::QuadInOut),
+                    (duration_ms as u32, Interpolation::QuadOut),
                     move |_state, ctx, buf| {
-                        let alpha = ctx.alpha();
+                        let elapsed = ctx.alpha() * duration_ms;
                         let area = ctx.area;
                         let width = area.width;
-                        let total_lines = area.height as f32;
-                        let stagger = 10.5_f32;
-                        let stagger_per_line = stagger / total_lines;
 
                         for y in area.y..area.y + area.height {
                             let line_index = (y - area.y) as f32;
-                            let local_alpha = (alpha * (1.0 + stagger)
-                                - line_index * stagger_per_line)
-                                .clamp(0.0, 1.0);
+                            let line_start = line_index * stagger_ms;
+                            let local_alpha =
+                                ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
                             let shift = ((1.0 - local_alpha) * width as f32) as u16;
 
                             // Snapshot row before modifying
@@ -224,7 +226,11 @@ impl App {
                                         if let Some(old) =
                                             prev.as_ref().and_then(|pb| pb.cell((x, y)))
                                         {
-                                            *cell = old.clone();
+                                            cell.set_char(
+                                                old.symbol().chars().next().unwrap_or(' '),
+                                            );
+                                            cell.set_fg(blend_color(bg, old.fg, fade));
+                                            cell.set_bg(blend_color(bg, old.bg, fade));
                                         }
                                     } else {
                                         cell.reset();
@@ -237,22 +243,24 @@ impl App {
             }
             TransitionKind::LinesCross => {
                 let prev = prev_buf.clone();
+                let line_dur_ms = 500.0_f32; // how long each line's reveal takes
+                let stagger_ms = 50.0_f32; // delay before next line starts
+                let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
+                let approx_lines = term_h as f32;
+                let duration_ms = line_dur_ms + stagger_ms * (approx_lines - 1.0).max(0.0);
                 fx::effect_fn_buf(
                     (),
-                    (700, Interpolation::QuadOut),
+                    (duration_ms as u32, Interpolation::QuadOut),
                     move |_state, ctx, buf| {
-                        let alpha = ctx.alpha();
+                        let elapsed = ctx.alpha() * duration_ms;
                         let area = ctx.area;
                         let width = area.width as f32;
-                        let total_lines = area.height as f32;
-                        let stagger = 0.4_f32;
-                        let stagger_per_line = stagger / total_lines;
 
                         for y in area.y..area.y + area.height {
                             let line_index = (y - area.y) as f32;
-                            let local_alpha = (alpha * (1.0 + stagger)
-                                - line_index * stagger_per_line)
-                                .clamp(0.0, 1.0);
+                            let line_start = line_index * stagger_ms;
+                            let local_alpha =
+                                ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
                             let visible_cols = (local_alpha * width) as u16;
                             let is_odd = (y - area.y) % 2 == 1;
 
@@ -276,7 +284,11 @@ impl App {
                                         if let Some(old) =
                                             prev.as_ref().and_then(|pb| pb.cell((x, y)))
                                         {
-                                            *cell = old.clone();
+                                            cell.set_char(
+                                                old.symbol().chars().next().unwrap_or(' '),
+                                            );
+                                            cell.set_fg(blend_color(bg, old.fg, fade));
+                                            cell.set_bg(blend_color(bg, old.bg, fade));
                                         }
                                     } else {
                                         cell.reset();
@@ -305,8 +317,7 @@ impl App {
                                 let col_offset = x - area.x;
                                 if col_offset > edge_col {
                                     let cell = &mut buf[(x, y)];
-                                    if let Some(old) =
-                                        prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                    if let Some(old) = prev.as_ref().and_then(|pb| pb.cell((x, y)))
                                     {
                                         *cell = old.clone();
                                     }
@@ -332,9 +343,7 @@ impl App {
         while !self.quit {
             self.pending_images.clear();
             let completed = terminal.draw(|frame| self.draw(frame))?;
-            if self.effect.is_none() {
-                self.prev_buffer = Some(completed.buffer.clone());
-            }
+            self.prev_buffer = Some(completed.buffer.clone());
             if self.effect.is_none() {
                 self.flush_iterm2_images()?;
             }
