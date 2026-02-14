@@ -115,18 +115,3 @@ pub fn theme_from_name(name: &str) -> Option<Theme> {
     }
 }
 
-/// Scan markdown for `<!-- theme: ... -->` directive and resolve it.
-pub fn theme_from_markdown(input: &str) -> Option<Theme> {
-    for line in input.lines() {
-        let trimmed = line.trim();
-        if let Some(inner) = trimmed.strip_prefix("<!--") {
-            if let Some(inner) = inner.strip_suffix("-->") {
-                let inner = inner.trim();
-                if let Some(value) = inner.strip_prefix("theme:") {
-                    return theme_from_name(value.trim());
-                }
-            }
-        }
-    }
-    None
-}

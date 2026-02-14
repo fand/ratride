@@ -5,6 +5,115 @@ use ratatui::text::{Line, Span, Text};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+/// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
+#[derive(Clone, Debug, Default)]
+pub struct Frontmatter {
+    pub theme: Option<String>,
+    pub layout: Option<SlideLayout>,
+    pub transition: Option<TransitionKind>,
+    pub image_max_width: Option<f64>,
+    /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
+    pub figlet: Option<Option<String>>,
+}
+
+/// Extract YAML frontmatter from the beginning of a markdown string.
+///
+/// Returns the parsed `Frontmatter` and the remaining markdown body (with the
+/// frontmatter block stripped). If no frontmatter is found the full input is
+/// returned unchanged.
+pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
+    let trimmed = input.trim_start();
+    if !trimmed.starts_with("---") {
+        return (Frontmatter::default(), input);
+    }
+
+    // Find the opening `---` line end
+    let after_open = match trimmed.strip_prefix("---") {
+        Some(rest) => {
+            // Must be followed by a newline (or only whitespace before newline)
+            let line_end = rest.find('\n');
+            match line_end {
+                Some(idx) if rest[..idx].trim().is_empty() => &rest[idx + 1..],
+                _ => return (Frontmatter::default(), input),
+            }
+        }
+        None => return (Frontmatter::default(), input),
+    };
+
+    // Find the closing `---`
+    let close_pos = after_open
+        .find("\n---")
+        .map(|i| i + 1); // point to the `---` line start
+    let (yaml_block, body) = match close_pos {
+        Some(pos) => {
+            let yaml = &after_open[..pos];
+            let rest = &after_open[pos..];
+            // Skip the closing `---` line
+            let after_close = rest.strip_prefix("---").unwrap_or(rest);
+            let after_close = match after_close.strip_prefix('\n') {
+                Some(s) => s,
+                None if after_close.trim().is_empty() => after_close,
+                None => after_close,
+            };
+            (yaml, after_close)
+        }
+        None => return (Frontmatter::default(), input),
+    };
+
+    let mut fm = Frontmatter::default();
+    for line in yaml_block.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+            match key {
+                "theme" => {
+                    fm.theme = Some(value.to_string());
+                }
+                "layout" => {
+                    fm.layout = Some(match value {
+                        "center" => SlideLayout::Center,
+                        "two-column" => SlideLayout::TwoColumn,
+                        _ => SlideLayout::Default,
+                    });
+                }
+                "transition" => {
+                    fm.transition = Some(match value {
+                        "fade" => TransitionKind::Fade,
+                        "dissolve" => TransitionKind::Dissolve,
+                        "coalesce" => TransitionKind::Coalesce,
+                        "sweep" | "sweep-in" => TransitionKind::SweepIn,
+                        "lines" => TransitionKind::Lines,
+                        "lines-cross" => TransitionKind::LinesCross,
+                        "lines-rgb" => TransitionKind::LinesRgb,
+                        "slide-rgb" => TransitionKind::SlideRgb,
+                        _ => TransitionKind::SlideIn,
+                    });
+                }
+                "image_max_width" => {
+                    let value = value.trim_end_matches('%');
+                    if let Ok(pct) = value.parse::<f64>() {
+                        fm.image_max_width = Some(pct / 100.0);
+                    }
+                }
+                "figlet" => {
+                    if value.is_empty() || value == "true" {
+                        fm.figlet = Some(None);
+                    } else if value != "false" {
+                        fm.figlet = Some(Some(value.to_string()));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    (fm, body)
+}
+
 #[derive(Clone, Debug, Default)]
 pub enum SlideLayout {
     #[default]
@@ -58,13 +167,13 @@ pub struct Slide {
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
 
 /// Parse markdown into slides split by `---` (horizontal rule).
-pub fn parse_slides(input: &str, theme: &Theme) -> Vec<Slide> {
+pub fn parse_slides(input: &str, theme: &Theme, frontmatter: &Frontmatter) -> Vec<Slide> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
     let parser = Parser::new_ext(input, options);
-    let mut converter = MdConverter::new(theme.clone());
+    let mut converter = MdConverter::new(theme.clone(), frontmatter);
     for event in parser {
         converter.process(event);
     }
@@ -137,6 +246,11 @@ struct MdConverter {
     heading_text_buf: String,
     images: Vec<SlideImage>,
     pending_image_max_width: Option<f64>,
+    // Frontmatter defaults
+    default_layout: Option<SlideLayout>,
+    default_transition: Option<TransitionKind>,
+    default_image_max_width: Option<f64>,
+    default_figlet: Option<Option<String>>,
 }
 
 #[derive(Clone)]
@@ -146,7 +260,7 @@ enum ListKind {
 }
 
 impl MdConverter {
-    fn new(theme: Theme) -> Self {
+    fn new(theme: Theme, frontmatter: &Frontmatter) -> Self {
         let base_style = Style::default().fg(theme.fg);
         Self {
             theme,
@@ -165,6 +279,10 @@ impl MdConverter {
             heading_text_buf: String::new(),
             images: Vec::new(),
             pending_image_max_width: None,
+            default_layout: frontmatter.layout.clone(),
+            default_transition: frontmatter.transition.clone(),
+            default_image_max_width: frontmatter.image_max_width,
+            default_figlet: frontmatter.figlet.clone(),
         }
     }
 
@@ -208,9 +326,17 @@ impl MdConverter {
         let lines = std::mem::take(&mut self.lines);
         let images = std::mem::take(&mut self.images);
         self.pending_figlet = None;
-        let transition = self.pending_transition.take().unwrap_or_default();
+        let transition = self
+            .pending_transition
+            .take()
+            .or_else(|| self.default_transition.clone())
+            .unwrap_or_default();
         if !lines.is_empty() {
-            let layout = self.pending_layout.take().unwrap_or_default();
+            let layout = self
+                .pending_layout
+                .take()
+                .or_else(|| self.default_layout.clone())
+                .unwrap_or_default();
             let mut slide = match layout {
                 SlideLayout::TwoColumn => split_two_column(lines),
                 _ => Slide {
@@ -246,7 +372,10 @@ impl MdConverter {
                     height: IMAGE_PLACEHOLDER_HEIGHT,
                     pixel_width: 0,
                     pixel_height: 0,
-                    max_width_percent: self.pending_image_max_width.take(),
+                    max_width_percent: self
+                        .pending_image_max_width
+                        .take()
+                        .or(self.default_image_max_width),
                 });
                 // Insert placeholder lines
                 for _ in 0..IMAGE_PLACEHOLDER_HEIGHT {
@@ -291,10 +420,20 @@ impl MdConverter {
                         .add_modifier(Modifier::BOLD),
                 };
                 self.push_style(|_| style);
-                if self.pending_figlet.is_some() {
+                let use_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
+                if use_figlet {
+                    // Apply default figlet if no per-slide directive
+                    if self.pending_figlet.is_none() {
+                        self.pending_figlet = self.default_figlet.clone();
+                    }
                     self.in_heading = true;
                     self.heading_text_buf.clear();
-                } else if !matches!(self.pending_layout, Some(SlideLayout::Center)) {
+                } else if !matches!(
+                    self.pending_layout
+                        .as_ref()
+                        .or(self.default_layout.as_ref()),
+                    Some(SlideLayout::Center)
+                ) {
                     self.current_spans
                         .push(Span::styled("# ", self.current_style()));
                 }
@@ -480,12 +619,22 @@ impl MdConverter {
     fn finish_slides(mut self) -> Vec<Slide> {
         self.flush_slide();
         if self.slides.is_empty() && !self.lines.is_empty() {
+            let layout = self
+                .pending_layout
+                .take()
+                .or_else(|| self.default_layout.clone())
+                .unwrap_or_default();
+            let transition = self
+                .pending_transition
+                .take()
+                .or_else(|| self.default_transition.clone())
+                .unwrap_or_default();
             self.slides.push(Slide {
-                layout: SlideLayout::Default,
+                layout,
                 content: Text::from(self.lines),
                 right_content: None,
                 images: std::mem::take(&mut self.images),
-                transition: self.pending_transition.take().unwrap_or_default(),
+                transition,
             });
         }
         self.slides
