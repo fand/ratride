@@ -19,6 +19,9 @@ pub enum TransitionKind {
     Dissolve,
     Coalesce,
     SweepIn,
+    Lines,
+    LinesCross,
+    SlideRgb,
 }
 
 /// Image reference found in a slide.
@@ -83,6 +86,9 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
             "dissolve" => TransitionKind::Dissolve,
             "coalesce" => TransitionKind::Coalesce,
             "sweep" | "sweep-in" => TransitionKind::SweepIn,
+            "lines" => TransitionKind::Lines,
+            "lines-cross" => TransitionKind::LinesCross,
+            "slide-rgb" => TransitionKind::SlideRgb,
             _ => TransitionKind::SlideIn,
         };
         return Some(CommentDirective::Transition(transition));

@@ -9,21 +9,40 @@ use std::time::Instant;
 
 use clap::Parser;
 
-use base64::{Engine, engine::general_purpose::STANDARD};
-use crossterm::cursor::MoveTo;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crate::markdown::{Slide, TransitionKind, parse_slides};
 use crate::render::ImagePlacement;
 use crate::theme::Theme;
+use base64::{Engine, engine::general_purpose::STANDARD};
+use crossterm::cursor::MoveTo;
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Layout, Rect},
-    widgets::StatefulWidget,
     DefaultTerminal, Frame,
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    style::Color,
+    widgets::StatefulWidget,
 };
-use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
-use tachyonfx::{fx, Duration, Effect, EffectRenderer, Interpolation, Motion};
+use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
+use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
 
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
+
+/// Linearly blend two colors. At t=0 returns `a`, at t=1 returns `b`.
+fn blend_color(a: Color, b: Color, t: f32) -> Color {
+    match (a, b) {
+        (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
+            let inv = 1.0 - t;
+            Color::Rgb(
+                (ar as f32 * inv + br as f32 * t) as u8,
+                (ag as f32 * inv + bg as f32 * t) as u8,
+                (ab as f32 * inv + bb as f32 * t) as u8,
+            )
+        }
+        _ => {
+            if t > 0.5 { b } else { a }
+        }
+    }
+}
 
 /// Detect if the terminal supports iTerm2 inline image protocol.
 fn is_iterm2() -> bool {
@@ -42,9 +61,7 @@ fn is_iterm2() -> bool {
 
 enum ImageBackend {
     /// Write iTerm2 escape sequences directly to stdout (presenterm-style).
-    Iterm2 {
-        images: HashMap<String, Vec<u8>>,
-    },
+    Iterm2 { images: HashMap<String, Vec<u8>> },
     /// Use ratatui-image for Kitty/Sixel/Halfblocks.
     RatatuiImage {
         states: HashMap<String, StatefulProtocol>,
@@ -63,6 +80,8 @@ struct App {
     last_frame: Instant,
     /// Deferred image draws (collected during draw, flushed after ratatui render).
     pending_images: Vec<ImagePlacement>,
+    /// Buffer snapshot from the previous frame (used for transition effects).
+    prev_buffer: Option<Buffer>,
 }
 
 impl App {
@@ -117,6 +136,7 @@ impl App {
             effect: None,
             last_frame: Instant::now(),
             pending_images: Vec::new(),
+            prev_buffer: None,
         }
     }
 
@@ -153,14 +173,11 @@ impl App {
     fn create_transition(&self) -> Effect {
         let slide = &self.slides[self.current_page];
         let bg = self.theme.bg;
+        let prev_buf = self.prev_buffer.clone();
         match slide.transition {
-            TransitionKind::SlideIn => {
-                fx::fade_from_fg(bg, (400, Interpolation::QuadOut))
-            }
+            TransitionKind::SlideIn => fx::fade_from_fg(bg, (400, Interpolation::QuadOut)),
             TransitionKind::Fade => fx::fade_from_fg(bg, (600, Interpolation::SineOut)),
-            TransitionKind::Dissolve => {
-                fx::dissolve((500, Interpolation::Linear)).reversed()
-            }
+            TransitionKind::Dissolve => fx::dissolve((500, Interpolation::Linear)).reversed(),
             TransitionKind::Coalesce => fx::coalesce((500, Interpolation::QuadOut)),
             TransitionKind::SweepIn => fx::sweep_in(
                 Motion::LeftToRight,
@@ -169,6 +186,142 @@ impl App {
                 bg,
                 (600, Interpolation::QuadOut),
             ),
+            TransitionKind::Lines => {
+                let prev = prev_buf.clone();
+                fx::effect_fn_buf(
+                    (),
+                    (700, Interpolation::QuadInOut),
+                    move |_state, ctx, buf| {
+                        let alpha = ctx.alpha();
+                        let area = ctx.area;
+                        let width = area.width;
+                        let total_lines = area.height as f32;
+                        let stagger = 10.5_f32;
+                        let stagger_per_line = stagger / total_lines;
+
+                        for y in area.y..area.y + area.height {
+                            let line_index = (y - area.y) as f32;
+                            let local_alpha = (alpha * (1.0 + stagger)
+                                - line_index * stagger_per_line)
+                                .clamp(0.0, 1.0);
+                            let shift = ((1.0 - local_alpha) * width as f32) as u16;
+
+                            // Snapshot row before modifying
+                            let original: Vec<_> = (area.x..area.x + width)
+                                .map(|x| buf[(x, y)].clone())
+                                .collect();
+
+                            for x in area.x..area.x + width {
+                                let col = x - area.x;
+                                let src_col = col + shift;
+                                let cell = &mut buf[(x, y)];
+                                if src_col < width {
+                                    *cell = original[src_col as usize].clone();
+                                } else {
+                                    let d = (src_col - width) as f32;
+                                    let fade = (d * 2.0 / width as f32).clamp(0.0, 1.0);
+                                    if fade > 0.0 {
+                                        if let Some(old) =
+                                            prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                        {
+                                            *cell = old.clone();
+                                        }
+                                    } else {
+                                        cell.reset();
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+            TransitionKind::LinesCross => {
+                let prev = prev_buf.clone();
+                fx::effect_fn_buf(
+                    (),
+                    (700, Interpolation::QuadOut),
+                    move |_state, ctx, buf| {
+                        let alpha = ctx.alpha();
+                        let area = ctx.area;
+                        let width = area.width as f32;
+                        let total_lines = area.height as f32;
+                        let stagger = 0.4_f32;
+                        let stagger_per_line = stagger / total_lines;
+
+                        for y in area.y..area.y + area.height {
+                            let line_index = (y - area.y) as f32;
+                            let local_alpha = (alpha * (1.0 + stagger)
+                                - line_index * stagger_per_line)
+                                .clamp(0.0, 1.0);
+                            let visible_cols = (local_alpha * width) as u16;
+                            let is_odd = (y - area.y) % 2 == 1;
+
+                            for x in area.x..area.x + area.width {
+                                let col_offset = x - area.x;
+                                let should_blank = if is_odd {
+                                    col_offset < area.width - visible_cols
+                                } else {
+                                    col_offset >= visible_cols
+                                };
+                                if should_blank {
+                                    let cell = &mut buf[(x, y)];
+                                    let d = if is_odd {
+                                        (area.width - visible_cols - 1 - col_offset) as f32
+                                    } else {
+                                        (col_offset - visible_cols) as f32
+                                    };
+                                    let fade =
+                                        (d * 2.0 / area.width as f32).clamp(0.0, 1.0);
+                                    if fade > 0.0 {
+                                        if let Some(old) =
+                                            prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                        {
+                                            *cell = old.clone();
+                                        }
+                                    } else {
+                                        cell.reset();
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+            TransitionKind::SlideRgb => {
+                let prev = prev_buf.clone();
+                fx::effect_fn_buf(
+                    (),
+                    (800, Interpolation::QuadOut),
+                    move |_state, ctx, buf| {
+                        let alpha = ctx.alpha();
+                        let area = ctx.area;
+                        let width = area.width as f32;
+                        let edge_col = (alpha * width) as u16;
+                        let gradient: [Color; 4] =
+                            [Color::Blue, Color::Green, Color::Red, Color::White];
+
+                        for y in area.y..area.y + area.height {
+                            for x in area.x..area.x + area.width {
+                                let col_offset = x - area.x;
+                                if col_offset > edge_col {
+                                    let cell = &mut buf[(x, y)];
+                                    if let Some(old) =
+                                        prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                    {
+                                        *cell = old.clone();
+                                    }
+                                } else if edge_col >= 1 && col_offset >= edge_col.saturating_sub(3)
+                                {
+                                    let dist = edge_col - col_offset; // 0..=3
+                                    let color = gradient[dist as usize];
+                                    let cell = &mut buf[(x, y)];
+                                    cell.set_fg(color);
+                                }
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
 
@@ -178,7 +331,10 @@ impl App {
         self.last_frame = Instant::now();
         while !self.quit {
             self.pending_images.clear();
-            terminal.draw(|frame| self.draw(frame))?;
+            let completed = terminal.draw(|frame| self.draw(frame))?;
+            if self.effect.is_none() {
+                self.prev_buffer = Some(completed.buffer.clone());
+            }
             if self.effect.is_none() {
                 self.flush_iterm2_images()?;
             }
@@ -248,7 +404,14 @@ impl App {
         }
 
         // Status bar
-        render::draw_status_bar(&layout, self.current_page, self.total_pages(), frame, status_area, &self.theme);
+        render::draw_status_bar(
+            &layout,
+            self.current_page,
+            self.total_pages(),
+            frame,
+            status_area,
+            &self.theme,
+        );
     }
 
     fn draw_image(&mut self, frame: &mut Frame, placement: &ImagePlacement) {
