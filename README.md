@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="./examples/ratride_logo.png" width="480" />
+    <img src="./examples/ratride_demo.gif" width="540" />
     <h1>ratride</h1>
 </div>
 
@@ -24,9 +24,9 @@ cargo install ratride
 ratride slides.md
 ```
 
-## Need more?
+## Not supported
 
-If you need any of the following, use [presenterm](https://github.com/mfontanini/presenterm):
+Ratride DOES NOT supported following fetures:
 
 - Syntax highlighting
 - Code execution
@@ -36,6 +36,9 @@ If you need any of the following, use [presenterm](https://github.com/mfontanini
 - PDF / HTML export
 - Incremental reveal (`pause`)
 - Hot reload
+
+If you need any of them, I recommend [presenterm](https://github.com/mfontanini/presenterm):
+
 
 ## LICENSE
 MIT
