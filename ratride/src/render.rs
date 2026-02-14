@@ -53,7 +53,7 @@ pub fn draw_default(
 
     let mut placements = Vec::new();
     for img in &slide.images {
-        if let Some(p) = compute_image_placement(content_area, img.line_index, img.height, scroll, &img.path) {
+        if let Some(p) = compute_image_placement(content_area, img.line_index, img.height, scroll, &img.path, false, 0, 0) {
             placements.push(p);
         }
     }
@@ -81,7 +81,7 @@ pub fn draw_center(
 
     let mut placements = Vec::new();
     for img in &slide.images {
-        if let Some(p) = compute_image_placement(centered_area, img.line_index, img.height, scroll, &img.path) {
+        if let Some(p) = compute_image_placement(centered_area, img.line_index, img.height, scroll, &img.path, true, img.pixel_width, img.pixel_height) {
             placements.push(p);
         }
     }
@@ -160,12 +160,17 @@ pub fn draw_status_bar(
 }
 
 /// Compute image placement rect within a content area, accounting for scroll.
+/// When `center` is true and pixel dimensions are available, the image is
+/// horizontally centered based on its aspect ratio.
 fn compute_image_placement(
     content_area: Rect,
     line_index: usize,
     height: u16,
     scroll: u16,
     path: &str,
+    center: bool,
+    pixel_width: u32,
+    pixel_height: u32,
 ) -> Option<ImagePlacement> {
     let y_start = line_index as i32 - scroll as i32;
     let y_end = y_start + height as i32;
@@ -181,10 +186,23 @@ fn compute_image_placement(
         return None;
     }
 
+    let (x, w) = if center && pixel_width > 0 && pixel_height > 0 {
+        // Estimate display width in cells from aspect ratio.
+        // Terminal cells are typically ~2x taller than wide in pixels.
+        let cell_aspect = 2.0_f64;
+        let display_w =
+            ((h as f64) * (pixel_width as f64) / (pixel_height as f64) * cell_aspect) as u16;
+        let display_w = display_w.min(content_area.width);
+        let x_offset = (content_area.width.saturating_sub(display_w)) / 2;
+        (content_area.x + x_offset, display_w)
+    } else {
+        (content_area.x, content_area.width)
+    };
+
     Some(ImagePlacement {
-        x: content_area.x,
+        x,
         y,
-        width: content_area.width,
+        width: w,
         height: h,
         path: path.to_string(),
     })

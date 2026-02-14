@@ -2,6 +2,8 @@ use crate::theme::Theme;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 #[derive(Clone, Debug, Default)]
 pub enum SlideLayout {
@@ -14,6 +16,7 @@ pub enum SlideLayout {
 #[derive(Clone, Debug, Default)]
 pub enum TransitionKind {
     #[default]
+    None,
     SlideIn,
     Fade,
     Dissolve,
@@ -33,6 +36,9 @@ pub struct SlideImage {
     pub line_index: usize,
     /// Number of placeholder lines reserved.
     pub height: u16,
+    /// Original pixel dimensions (filled after image loading).
+    pub pixel_width: u32,
+    pub pixel_height: u32,
 }
 
 #[derive(Clone)]
@@ -66,6 +72,7 @@ pub fn parse_slides(input: &str, theme: &Theme) -> Vec<Slide> {
 enum CommentDirective {
     Layout(SlideLayout),
     Transition(TransitionKind),
+    Figlet(Option<String>),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -95,6 +102,12 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
         };
         return Some(CommentDirective::Transition(transition));
     }
+    if inner == "figlet" {
+        return Some(CommentDirective::Figlet(None));
+    }
+    if let Some(font) = inner.strip_prefix("figlet:") {
+        return Some(CommentDirective::Figlet(Some(font.trim().to_string())));
+    }
     None
 }
 
@@ -110,6 +123,9 @@ struct MdConverter {
     in_image: bool,
     pending_layout: Option<SlideLayout>,
     pending_transition: Option<TransitionKind>,
+    pending_figlet: Option<Option<String>>,
+    in_heading: bool,
+    heading_text_buf: String,
     images: Vec<SlideImage>,
 }
 
@@ -134,6 +150,9 @@ impl MdConverter {
             in_image: false,
             pending_layout: None,
             pending_transition: None,
+            pending_figlet: None,
+            in_heading: false,
+            heading_text_buf: String::new(),
             images: Vec::new(),
         }
     }
@@ -156,7 +175,10 @@ impl MdConverter {
     fn flush_line(&mut self) {
         let spans = std::mem::take(&mut self.current_spans);
         if self.in_blockquote {
-            let mut bq_spans = vec![Span::styled("│ ", Style::default().fg(self.theme.block_quote_prefix))];
+            let mut bq_spans = vec![Span::styled(
+                "│ ",
+                Style::default().fg(self.theme.block_quote_prefix),
+            )];
             bq_spans.extend(spans);
             self.lines.push(Line::from(bq_spans));
         } else {
@@ -174,6 +196,7 @@ impl MdConverter {
         }
         let lines = std::mem::take(&mut self.lines);
         let images = std::mem::take(&mut self.images);
+        self.pending_figlet = None;
         let transition = self.pending_transition.take().unwrap_or_default();
         if !lines.is_empty() {
             let layout = self.pending_layout.take().unwrap_or_default();
@@ -210,6 +233,8 @@ impl MdConverter {
                     path: dest_url.to_string(),
                     line_index,
                     height: IMAGE_PLACEHOLDER_HEIGHT,
+                    pixel_width: 0,
+                    pixel_height: 0,
                 });
                 // Insert placeholder lines
                 for _ in 0..IMAGE_PLACEHOLDER_HEIGHT {
@@ -221,24 +246,25 @@ impl MdConverter {
             }
 
             // --- HTML comments (directives) ---
-            Event::Html(html) | Event::InlineHtml(html) => {
-                match parse_comment(&html) {
-                    Some(CommentDirective::Layout(layout)) => {
-                        self.pending_layout = Some(layout);
-                    }
-                    Some(CommentDirective::Transition(transition)) => {
-                        self.pending_transition = Some(transition);
-                    }
-                    None => {}
+            Event::Html(html) | Event::InlineHtml(html) => match parse_comment(&html) {
+                Some(CommentDirective::Layout(layout)) => {
+                    self.pending_layout = Some(layout);
                 }
-            }
+                Some(CommentDirective::Transition(transition)) => {
+                    self.pending_transition = Some(transition);
+                }
+                Some(CommentDirective::Figlet(font)) => {
+                    self.pending_figlet = Some(font);
+                }
+                None => {}
+            },
 
             // --- Headings ---
             Event::Start(Tag::Heading { level, .. }) => {
                 let style = match level {
                     HeadingLevel::H1 => Style::default()
                         .fg(self.theme.h1)
-                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                        .add_modifier(Modifier::BOLD),
                     HeadingLevel::H2 => Style::default()
                         .fg(self.theme.h2)
                         .add_modifier(Modifier::BOLD),
@@ -250,10 +276,25 @@ impl MdConverter {
                         .add_modifier(Modifier::BOLD),
                 };
                 self.push_style(|_| style);
+                if self.pending_figlet.is_some() {
+                    self.in_heading = true;
+                    self.heading_text_buf.clear();
+                } else if !matches!(self.pending_layout, Some(SlideLayout::Center)) {
+                    self.current_spans
+                        .push(Span::styled("# ", self.current_style()));
+                }
             }
             Event::End(TagEnd::Heading(_)) => {
-                self.flush_line();
-                self.lines.push(Line::default());
+                if self.in_heading {
+                    self.in_heading = false;
+                    let style = self.current_style();
+                    self.current_spans.clear();
+                    self.render_figlet_heading(&self.heading_text_buf.clone(), style);
+                    self.lines.push(Line::default());
+                } else {
+                    self.flush_line();
+                    self.lines.push(Line::default());
+                }
                 self.pop_style();
             }
 
@@ -282,7 +323,9 @@ impl MdConverter {
 
             // --- Code ---
             Event::Code(code) => {
-                let style = Style::default().fg(self.theme.inline_code_fg).bg(self.theme.surface);
+                let style = Style::default()
+                    .fg(self.theme.inline_code_fg)
+                    .bg(self.theme.surface);
                 self.current_spans
                     .push(Span::styled(format!(" {code} "), style));
             }
@@ -325,8 +368,10 @@ impl MdConverter {
                     }
                     None => String::new(),
                 };
-                self.current_spans
-                    .push(Span::styled(bullet, Style::default().fg(self.theme.list_bullet)));
+                self.current_spans.push(Span::styled(
+                    bullet,
+                    Style::default().fg(self.theme.list_bullet),
+                ));
             }
             Event::End(TagEnd::Item) => {
                 self.flush_line();
@@ -348,7 +393,9 @@ impl MdConverter {
 
             // --- Text ---
             Event::Text(text) => {
-                if self.in_image {
+                if self.in_heading {
+                    self.heading_text_buf.push_str(&text);
+                } else if self.in_image {
                     // Skip alt text of images
                 } else if self.in_code_block {
                     let style = Style::default().fg(self.theme.fg).bg(self.theme.surface);
@@ -373,6 +420,45 @@ impl MdConverter {
             }
 
             _ => {}
+        }
+    }
+
+    fn render_figlet_heading(&mut self, text: &str, style: Style) {
+        let style = style.remove_modifier(Modifier::UNDERLINED);
+        let mut cmd = Command::new("figlet");
+        if let Some(Some(font)) = &self.pending_figlet {
+            cmd.args(["-f", font]);
+        }
+        let art = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .and_then(|mut child| {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                child.wait_with_output()
+            })
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| String::from_utf8(out.stdout).ok());
+
+        let Some(art) = art else {
+            self.current_spans
+                .push(Span::styled(text.to_string(), style));
+            self.flush_line();
+            return;
+        };
+        // Trim trailing all-whitespace lines
+        let art_lines: Vec<&str> = art.split('\n').collect();
+        let end = art_lines
+            .iter()
+            .rposition(|l| l.chars().any(|c| !c.is_whitespace()))
+            .map_or(0, |i| i + 1);
+        for line in &art_lines[..end] {
+            self.lines
+                .push(Line::from(Span::styled(line.to_string(), style)));
         }
     }
 

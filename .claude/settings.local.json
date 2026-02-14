@@ -9,7 +9,8 @@
       "WebFetch(domain:mfontanini.github.io)",
       "WebFetch(domain:orhun.dev)",
       "Bash(echo:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

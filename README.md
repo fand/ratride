@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="./ratride_logo.png" width="480" />
+    <img src="./examples/ratride_logo.png" width="480" />
     <h1>ratride</h1>
 </div>
 

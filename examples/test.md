@@ -1,5 +1,7 @@
 <!-- layout: center -->
-<!-- transition: fade -->
+<!-- figlet -->
+
+![](./ratride_logo_outline.png)
 
 # ratride
 
@@ -73,7 +75,9 @@ Each line is revealed left-to-right with staggered timing.
 ## Lines-Cross Transition
 
 This slide uses the **lines-cross** transition.
-
+Even lines reveal left-to-right, odd lines right-to-left.
+Even lines reveal left-to-right, odd lines right-to-left.
+Even lines reveal left-to-right, odd lines right-to-left.
 Even lines reveal left-to-right, odd lines right-to-left.
 
 ---

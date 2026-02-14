@@ -26,8 +26,8 @@ use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
 use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
 
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
-const LINE_DUR_MS: f32 = 500.0; // how long each line's animation takes
-const STAGGER_MS: f32 = 50.0; // delay before next line starts
+const LINE_DUR_MS: f32 = 600.0; // how long each line's animation takes
+const STAGGER_MS: f32 = 60.0; // delay before next line starts
 
 /// Linearly blend two colors. At t=0 returns `a`, at t=1 returns `b`.
 /// Non-RGB colors (e.g. Color::Reset) are returned as-is to avoid
@@ -79,15 +79,6 @@ fn anim_color(progress: f32) -> Color {
     let white = (255, 255, 255);
     let red = (255, 100, 100);
 
-    // if progress < 0.4 {
-    //     lerp_rgb(blue, cyan, progress * 2.5)
-    // } else if progress < 0.6 {
-    //     lerp_rgb(cyan, magenta, progress * 5.0 - 2.0)
-    // } else if progress < 0.8 {
-    //     lerp_rgb(magenta, white, progress * 5.0 - 3.0)
-    // } else {
-    //     lerp_rgb(white, red, progress * 5.0 - 4.0)
-    // }
     if progress < 0.8 {
         lerp_rgb(blue, cyan, progress * 1.25)
     } else if progress < 0.85 {
@@ -116,7 +107,10 @@ fn is_iterm2() -> bool {
 
 enum ImageBackend {
     /// Write iTerm2 escape sequences directly to stdout (presenterm-style).
-    Iterm2 { images: HashMap<String, Vec<u8>> },
+    /// Stores pre-encoded base64 data and byte length for each image.
+    Iterm2 {
+        images: HashMap<String, (usize, String)>,
+    },
     /// Use ratatui-image for Kitty/Sixel/Halfblocks.
     RatatuiImage {
         states: HashMap<String, StatefulProtocol>,
@@ -141,11 +135,14 @@ struct App {
 
 impl App {
     fn new(markdown: &str, base_dir: &Path, theme: Theme) -> Self {
-        let slides = parse_slides(markdown, &theme);
+        let mut slides = parse_slides(markdown, &theme);
         let len = slides.len().max(1);
 
+        // Collect image pixel dimensions for centering.
+        let mut dims: HashMap<String, (u32, u32)> = HashMap::new();
+
         let image_backend = if is_iterm2() {
-            let mut images: HashMap<String, Vec<u8>> = HashMap::new();
+            let mut images: HashMap<String, (usize, String)> = HashMap::new();
             for slide in &slides {
                 for img in &slide.images {
                     if images.contains_key(&img.path) {
@@ -153,7 +150,12 @@ impl App {
                     }
                     let img_path = base_dir.join(&img.path);
                     if let Ok(data) = std::fs::read(&img_path) {
-                        images.insert(img.path.clone(), data);
+                        if let Ok((w, h)) = image::image_dimensions(&img_path) {
+                            dims.insert(img.path.clone(), (w, h));
+                        }
+                        let size = data.len();
+                        let b64 = STANDARD.encode(&data);
+                        images.insert(img.path.clone(), (size, b64));
                     }
                 }
             }
@@ -172,6 +174,7 @@ impl App {
                             r.decode()
                                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
                         }) {
+                            dims.insert(img.path.clone(), (dyn_img.width(), dyn_img.height()));
                             let protocol = picker.new_resize_protocol(dyn_img);
                             states.insert(img.path.clone(), protocol);
                         }
@@ -180,6 +183,16 @@ impl App {
             }
             ImageBackend::RatatuiImage { states }
         };
+
+        // Populate pixel dimensions on SlideImage for centered layout.
+        for slide in &mut slides {
+            for img in &mut slide.images {
+                if let Some(&(w, h)) = dims.get(&img.path) {
+                    img.pixel_width = w;
+                    img.pixel_height = h;
+                }
+            }
+        }
 
         Self {
             slides,
@@ -210,7 +223,7 @@ impl App {
     fn goto_page(&mut self, page: usize) {
         if page < self.total_pages() && page != self.current_page {
             self.current_page = page;
-            self.effect = Some(self.create_transition());
+            self.effect = self.create_transition();
         }
     }
 
@@ -225,11 +238,12 @@ impl App {
         }
     }
 
-    fn create_transition(&self) -> Effect {
+    fn create_transition(&self) -> Option<Effect> {
         let slide = &self.slides[self.current_page];
         let bg = self.theme.bg;
         let prev_buf = self.prev_buffer.clone();
-        match slide.transition {
+        Some(match slide.transition {
+            TransitionKind::None => return None,
             TransitionKind::SlideIn => fx::fade_from_fg(bg, (400, Interpolation::QuadOut)),
             TransitionKind::Fade => fx::fade_from_fg(bg, (600, Interpolation::SineOut)),
             TransitionKind::Dissolve => fx::dissolve((500, Interpolation::Linear)).reversed(),
@@ -243,11 +257,10 @@ impl App {
             ),
             TransitionKind::Lines => {
                 let prev = prev_buf.clone();
-                let line_dur_ms = LINE_DUR_MS;
-                let stagger_ms = STAGGER_MS;
+
                 let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
                 let approx_lines = term_h as f32; // slightly overestimate for safety
-                let duration_ms = line_dur_ms + stagger_ms * (approx_lines - 1.0).max(0.0);
+                let duration_ms = LINE_DUR_MS + STAGGER_MS * (approx_lines - 1.0).max(0.0);
                 fx::effect_fn_buf(
                     (),
                     (duration_ms as u32, Interpolation::Linear),
@@ -258,9 +271,9 @@ impl App {
 
                         for y in area.y..area.y + area.height {
                             let line_index = (y - area.y) as f32;
-                            let line_start = line_index * stagger_ms;
+                            let line_start = line_index * STAGGER_MS;
                             let local_alpha =
-                                ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
+                                ((elapsed - line_start) / LINE_DUR_MS).clamp(0.0, 1.0);
                             let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
                             let shift = ((1.0 - local_alpha) * width as f32) as u16;
 
@@ -299,11 +312,10 @@ impl App {
             }
             TransitionKind::LinesCross => {
                 let prev = prev_buf.clone();
-                let line_dur_ms = LINE_DUR_MS;
-                let stagger_ms = STAGGER_MS;
+
                 let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
                 let approx_lines = term_h as f32;
-                let duration_ms = line_dur_ms + stagger_ms * (approx_lines - 1.0).max(0.0);
+                let duration_ms = LINE_DUR_MS + STAGGER_MS * (approx_lines - 1.0).max(0.0);
                 fx::effect_fn_buf(
                     (),
                     (duration_ms as u32, Interpolation::Linear),
@@ -314,9 +326,9 @@ impl App {
 
                         for y in area.y..area.y + area.height {
                             let line_index = (y - area.y) as f32;
-                            let line_start = line_index * stagger_ms;
+                            let line_start = line_index * STAGGER_MS;
                             let local_alpha =
-                                ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
+                                ((elapsed - line_start) / LINE_DUR_MS).clamp(0.0, 1.0);
                             let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
                             let visible_cols = (local_alpha * width) as u16;
                             let is_odd = (y - area.y) % 2 == 1;
@@ -357,11 +369,10 @@ impl App {
             }
             TransitionKind::LinesRgb => {
                 let prev = prev_buf.clone();
-                let line_dur_ms = LINE_DUR_MS;
-                let stagger_ms = STAGGER_MS;
+
                 let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
                 let approx_lines = term_h as f32;
-                let duration_ms = line_dur_ms + stagger_ms * (approx_lines - 1.0).max(0.0);
+                let duration_ms = LINE_DUR_MS + STAGGER_MS * (approx_lines - 1.0).max(0.0);
                 fx::effect_fn_buf(
                     (),
                     (duration_ms as u32, Interpolation::Linear),
@@ -372,9 +383,9 @@ impl App {
 
                         for y in area.y..area.y + area.height {
                             let line_index = (y - area.y) as f32;
-                            let line_start = line_index * stagger_ms;
+                            let line_start = line_index * STAGGER_MS;
                             let local_alpha =
-                                ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
+                                ((elapsed - line_start) / LINE_DUR_MS).clamp(0.0, 1.0);
                             let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
                             let shift = ((1.0 - local_alpha) * width as f32) as u16;
 
@@ -422,7 +433,7 @@ impl App {
             }
             TransitionKind::SlideRgb => {
                 let prev = prev_buf.clone();
-                let band_width = 12_u16; // width of the RGB gradient band
+                let band_width = 24_u16; // width of the RGB gradient band
                 fx::effect_fn_buf(
                     (),
                     (800, Interpolation::QuadOut),
@@ -457,12 +468,12 @@ impl App {
                     },
                 )
             }
-        }
+        })
     }
 
     fn run(mut self, mut terminal: DefaultTerminal) -> io::Result<()> {
         terminal.draw(|_| {})?;
-        self.effect = Some(self.create_transition());
+        self.effect = self.create_transition();
         self.last_frame = Instant::now();
         while !self.quit {
             self.pending_images.clear();
@@ -490,16 +501,12 @@ impl App {
             }
             let mut stdout = io::stdout();
             for img in pending {
-                if let Some(data) = images.get(&img.path) {
+                if let Some((size, b64)) = images.get(&img.path) {
                     crossterm::execute!(stdout, MoveTo(img.x, img.y))?;
-                    let b64 = STANDARD.encode(data);
                     write!(
                         stdout,
                         "\x1b]1337;File=size={};width={};height={};inline=1;preserveAspectRatio=1:{}\x07",
-                        data.len(),
-                        img.width,
-                        img.height,
-                        b64,
+                        size, img.width, img.height, b64,
                     )?;
                     stdout.flush()?;
                 }
