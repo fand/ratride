@@ -131,6 +131,8 @@ struct App {
     pending_images: Vec<ImagePlacement>,
     /// Buffer snapshot from the previous frame (used for transition effects).
     prev_buffer: Option<Buffer>,
+    /// Set when iTerm2 image areas need clearing on next frame.
+    needs_clear: bool,
 }
 
 impl App {
@@ -233,6 +235,7 @@ impl App {
             last_frame: Instant::now(),
             pending_images: Vec::new(),
             prev_buffer: None,
+            needs_clear: false,
         }
     }
 
@@ -250,6 +253,11 @@ impl App {
 
     fn goto_page(&mut self, page: usize) {
         if page < self.total_pages() && page != self.current_page {
+            if matches!(self.image_backend, ImageBackend::Iterm2 { .. })
+                && !self.pending_images.is_empty()
+            {
+                self.needs_clear = true;
+            }
             self.current_page = page;
             self.effect = self.create_transition();
         }
@@ -505,6 +513,10 @@ impl App {
         self.last_frame = Instant::now();
         while !self.quit {
             self.pending_images.clear();
+            if self.needs_clear {
+                terminal.clear()?;
+                self.needs_clear = false;
+            }
             let completed = terminal.draw(|frame| self.draw(frame))?;
             self.prev_buffer = Some(completed.buffer.clone());
             if self.effect.is_none() {
