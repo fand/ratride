@@ -6,4 +6,4 @@ members = ["ratride"]
 publish = true
 push = true
 tag = true
-tag-prefix = "v"
+tag-prefix = ""
