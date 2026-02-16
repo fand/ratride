@@ -310,6 +310,10 @@ impl MdConverter {
             )];
             bq_spans.extend(spans);
             self.lines.push(Line::from(bq_spans));
+        } else if self.in_code_block {
+            self.lines.push(
+                Line::from(spans).style(Style::default().bg(self.theme.surface)),
+            );
         } else {
             self.lines.push(Line::from(spans));
         }
@@ -488,9 +492,17 @@ impl MdConverter {
             Event::Start(Tag::CodeBlock(_kind)) => {
                 self.in_code_block = true;
                 self.flush_line();
+                // Replace preceding blank line (from paragraph end) with bg-colored padding
+                if self.lines.last().is_some_and(|l| l.spans.is_empty()) {
+                    self.lines.pop();
+                }
+                self.lines
+                    .push(Line::from("").style(Style::default().bg(self.theme.surface)));
             }
             Event::End(TagEnd::CodeBlock) => {
                 self.in_code_block = false;
+                self.lines
+                    .push(Line::from("").style(Style::default().bg(self.theme.surface)));
                 self.lines.push(Line::default());
             }
 
