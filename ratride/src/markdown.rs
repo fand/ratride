@@ -323,8 +323,12 @@ impl MdConverter {
         if !self.current_spans.is_empty() {
             self.flush_line();
         }
-        // Trim trailing blank lines
-        while self.lines.last().is_some_and(|l| l.spans.is_empty()) {
+        // Trim trailing blank lines (but keep bg-styled padding lines)
+        while self
+            .lines
+            .last()
+            .is_some_and(|l| l.spans.is_empty() && l.style.bg.is_none())
+        {
             self.lines.pop();
         }
         let lines = std::mem::take(&mut self.lines);
@@ -807,6 +811,27 @@ mod tests {
                 info
             );
         }
+    }
+
+    #[test]
+    fn code_block_at_slide_end_has_bottom_padding() {
+        let md = "# Title\n\n```\ncode\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        let code_idx = info.iter().position(|(t, _)| t.contains("code")).unwrap();
+        // There should be a bg-colored padding line after the code content
+        assert!(
+            info.len() > code_idx + 1,
+            "missing bottom padding after code block at slide end: {:?}",
+            info
+        );
+        assert!(
+            info[code_idx + 1].1,
+            "bottom padding should have bg: {:?}",
+            info
+        );
     }
 
     #[test]

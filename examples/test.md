@@ -63,6 +63,13 @@ fn main() {
 
 > This is a blockquote.
 
+```rust
+fn main() {
+    println!("Hello, world!");
+}
+```
+
+
 ---
 
 <!-- transition: lines -->
