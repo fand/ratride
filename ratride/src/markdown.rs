@@ -1,9 +1,10 @@
 use crate::theme::Theme;
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Modifier, Style};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use std::io::Write;
 use std::process::{Command, Stdio};
+use syntect::parsing::SyntaxSet;
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
@@ -246,6 +247,11 @@ struct MdConverter {
     heading_text_buf: String,
     images: Vec<SlideImage>,
     pending_image_max_width: Option<f64>,
+    // Syntax highlighting
+    code_block_lang: Option<String>,
+    code_block_buf: String,
+    syntax_set: SyntaxSet,
+    syntect_theme: syntect::highlighting::Theme,
     // Frontmatter defaults
     default_layout: Option<SlideLayout>,
     default_transition: Option<TransitionKind>,
@@ -262,6 +268,7 @@ enum ListKind {
 impl MdConverter {
     fn new(theme: Theme, frontmatter: &Frontmatter) -> Self {
         let base_style = Style::default().fg(theme.fg);
+        let syntect_theme = theme.syntect_theme();
         Self {
             theme,
             slides: Vec::new(),
@@ -279,6 +286,10 @@ impl MdConverter {
             heading_text_buf: String::new(),
             images: Vec::new(),
             pending_image_max_width: None,
+            code_block_lang: None,
+            code_block_buf: String::new(),
+            syntax_set: SyntaxSet::load_defaults_newlines(),
+            syntect_theme,
             default_layout: frontmatter.layout.clone(),
             default_transition: frontmatter.transition.clone(),
             default_image_max_width: frontmatter.image_max_width,
@@ -493,8 +504,16 @@ impl MdConverter {
             }
 
             // --- Code Block ---
-            Event::Start(Tag::CodeBlock(_kind)) => {
+            Event::Start(Tag::CodeBlock(kind)) => {
                 self.in_code_block = true;
+                self.code_block_buf.clear();
+                self.code_block_lang = match kind {
+                    CodeBlockKind::Fenced(lang) => {
+                        let lang = lang.split(',').next().unwrap_or("").trim().to_string();
+                        if lang.is_empty() { None } else { Some(lang) }
+                    }
+                    CodeBlockKind::Indented => None,
+                };
                 self.flush_line();
                 // Replace preceding blank line (from paragraph end) with bg-colored padding,
                 // but keep the gap when following another code block.
@@ -510,8 +529,8 @@ impl MdConverter {
             }
             Event::End(TagEnd::CodeBlock) => {
                 self.in_code_block = false;
-                // Discard trailing whitespace-only span left by text.split('\n')
                 self.current_spans.clear();
+                self.flush_code_block();
                 self.lines
                     .push(Line::from("").style(Style::default().bg(self.theme.surface)));
                 self.lines.push(Line::default());
@@ -575,14 +594,7 @@ impl MdConverter {
                 } else if self.in_image {
                     // Skip alt text of images
                 } else if self.in_code_block {
-                    let style = Style::default().fg(self.theme.fg).bg(self.theme.surface);
-                    for line in text.split('\n') {
-                        if !self.current_spans.is_empty() {
-                            self.flush_line();
-                        }
-                        self.current_spans
-                            .push(Span::styled(format!("  {line}"), style));
-                    }
+                    self.code_block_buf.push_str(&text);
                 } else {
                     self.current_spans
                         .push(Span::styled(text.to_string(), self.current_style()));
@@ -597,6 +609,59 @@ impl MdConverter {
             }
 
             _ => {}
+        }
+    }
+
+    fn flush_code_block(&mut self) {
+        let buf = std::mem::take(&mut self.code_block_buf);
+        let lang = self.code_block_lang.take();
+        let bg = self.theme.surface;
+        let code = buf.trim_end_matches('\n');
+
+        let syntax = lang
+            .as_deref()
+            .and_then(|l| self.syntax_set.find_syntax_by_token(l));
+
+        if let Some(syntax) = syntax {
+            let mut h = syntect::easy::HighlightLines::new(syntax, &self.syntect_theme);
+            for line in code.split('\n') {
+                let regions = h
+                    .highlight_line(line, &self.syntax_set)
+                    .unwrap_or_default();
+                let mut spans: Vec<Span<'static>> = vec![Span::styled(
+                    "  ",
+                    Style::default().bg(bg),
+                )];
+                for (syn_style, text) in regions {
+                    let fg_color = Color::Rgb(
+                        syn_style.foreground.r,
+                        syn_style.foreground.g,
+                        syn_style.foreground.b,
+                    );
+                    let mut style = Style::default().fg(fg_color).bg(bg);
+                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::BOLD) {
+                        style = style.add_modifier(Modifier::BOLD);
+                    }
+                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::ITALIC) {
+                        style = style.add_modifier(Modifier::ITALIC);
+                    }
+                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE) {
+                        style = style.add_modifier(Modifier::UNDERLINED);
+                    }
+                    spans.push(Span::styled(text.to_string(), style));
+                }
+                self.lines
+                    .push(Line::from(spans).style(Style::default().bg(bg)));
+            }
+        } else {
+            // Fallback: uniform style (no language or unknown language)
+            let style = Style::default().fg(self.theme.fg).bg(bg);
+            for line in code.split('\n') {
+                self.lines.push(
+                    Line::from(vec![Span::styled(format!("  {line}"), style)])
+                        .style(Style::default().bg(bg)),
+                );
+            }
         }
     }
 

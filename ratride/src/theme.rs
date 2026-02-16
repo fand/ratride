@@ -99,6 +99,30 @@ impl Default for Theme {
     }
 }
 
+impl Theme {
+    pub fn syntect_theme(&self) -> syntect::highlighting::Theme {
+        let bytes: &[u8] = match (self.bg, self.fg) {
+            // Match by bg color to identify which Catppuccin flavor
+            (ratatui::style::Color::Rgb(0x1e, 0x1e, 0x2e), _) => {
+                include_bytes!("../themes/Catppuccin Mocha.tmTheme")
+            }
+            (ratatui::style::Color::Rgb(0x24, 0x27, 0x3a), _) => {
+                include_bytes!("../themes/Catppuccin Macchiato.tmTheme")
+            }
+            (ratatui::style::Color::Rgb(0x30, 0x34, 0x46), _) => {
+                include_bytes!("../themes/Catppuccin Frappe.tmTheme")
+            }
+            (ratatui::style::Color::Rgb(0xef, 0xf1, 0xf5), _) => {
+                include_bytes!("../themes/Catppuccin Latte.tmTheme")
+            }
+            _ => include_bytes!("../themes/Catppuccin Mocha.tmTheme"),
+        };
+        let cursor = std::io::Cursor::new(bytes);
+        syntect::highlighting::ThemeSet::load_from_reader(&mut std::io::BufReader::new(cursor))
+            .expect("valid tmTheme")
+    }
+}
+
 /// Resolve a theme name to a Theme.
 /// Accepts both "catppuccin-mocha" and "mocha" forms.
 pub fn theme_from_name(name: &str) -> Option<Theme> {
