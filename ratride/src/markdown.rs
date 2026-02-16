@@ -618,9 +618,16 @@ impl MdConverter {
         let bg = self.theme.surface;
         let code = buf.trim_end_matches('\n');
 
-        let syntax = lang
-            .as_deref()
-            .and_then(|l| self.syntax_set.find_syntax_by_token(l));
+        let syntax = lang.as_deref().and_then(|l| {
+            self.syntax_set.find_syntax_by_token(l).or_else(|| {
+                // Fallback: map common tokens missing from syntect defaults
+                let fallback = match l {
+                    "jsx" | "tsx" | "ts" | "typescript" => Some("js"),
+                    _ => None,
+                };
+                fallback.and_then(|f| self.syntax_set.find_syntax_by_token(f))
+            })
+        });
 
         if let Some(syntax) = syntax {
             let mut h = syntect::easy::HighlightLines::new(syntax, &self.syntect_theme);
