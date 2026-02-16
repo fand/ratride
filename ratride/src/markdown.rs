@@ -492,15 +492,22 @@ impl MdConverter {
             Event::Start(Tag::CodeBlock(_kind)) => {
                 self.in_code_block = true;
                 self.flush_line();
-                // Replace preceding blank line (from paragraph end) with bg-colored padding
+                // Replace preceding blank line (from paragraph end) with bg-colored padding,
+                // but keep the gap when following another code block.
                 if self.lines.last().is_some_and(|l| l.spans.is_empty()) {
-                    self.lines.pop();
+                    let prev_has_bg = self.lines.len() >= 2
+                        && self.lines[self.lines.len() - 2].style.bg.is_some();
+                    if !prev_has_bg {
+                        self.lines.pop();
+                    }
                 }
                 self.lines
                     .push(Line::from("").style(Style::default().bg(self.theme.surface)));
             }
             Event::End(TagEnd::CodeBlock) => {
                 self.in_code_block = false;
+                // Discard trailing whitespace-only span left by text.split('\n')
+                self.current_spans.clear();
                 self.lines
                     .push(Line::from("").style(Style::default().bg(self.theme.surface)));
                 self.lines.push(Line::default());
@@ -690,5 +697,143 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             images: Vec::new(),
             transition: TransitionKind::default(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn test_theme() -> Theme {
+        Theme::default()
+    }
+
+    fn parse(md: &str) -> Vec<Slide> {
+        let fm = Frontmatter::default();
+        parse_slides(md, &test_theme(), &fm)
+    }
+
+    /// Helper: collect (text, has_bg) for each line in a slide.
+    fn line_info(slide: &Slide) -> Vec<(String, bool)> {
+        slide
+            .content
+            .lines
+            .iter()
+            .map(|l| {
+                let text: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                let has_bg = l.style.bg.is_some()
+                    || l.spans.iter().any(|s| s.style.bg.is_some());
+                (text, has_bg)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn single_code_block() {
+        let md = "```\nhello\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        // Expected: bg_pad, "  hello"(bg)
+        // (trailing bg_pad is trimmed by flush_slide since Line::from("") has empty spans)
+        assert!(info.len() >= 2, "got {} lines: {:?}", info.len(), info);
+        // First line is bg padding
+        assert!(info[0].1, "first line should have bg");
+        // Content line
+        assert!(info[1].0.contains("hello"), "content line: {:?}", info[1]);
+        assert!(info[1].1, "content should have bg");
+    }
+
+    #[test]
+    fn consecutive_code_blocks_have_gap() {
+        let md = "```\nfirst\n```\n\n```\nsecond\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        // Find the two content lines
+        let first_idx = info.iter().position(|(t, _)| t.contains("first")).unwrap();
+        let second_idx = info.iter().position(|(t, _)| t.contains("second")).unwrap();
+
+        // There should be a non-bg (blank) line between the two blocks
+        let between = &info[first_idx + 1..second_idx];
+        let has_blank = between.iter().any(|(_, bg)| !bg);
+        assert!(
+            has_blank,
+            "expected a blank (non-bg) gap between code blocks, got: {:?}",
+            between
+        );
+    }
+
+    #[test]
+    fn consecutive_code_blocks_no_stale_spans() {
+        let md = "```\naaa\n```\n\n```\nbbb\n```\n";
+        let slides = parse(md);
+        let info = line_info(&slides[0]);
+
+        // No line should be just whitespace with bg (stale span artifact)
+        for (text, has_bg) in &info {
+            if text.trim().is_empty() && *has_bg {
+                // Only bg-padding lines (empty string) are allowed, not "  " leftover
+                assert!(
+                    text.is_empty(),
+                    "found stale whitespace-only bg line: {:?}",
+                    text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn code_block_after_paragraph_no_double_blank() {
+        let md = "some text\n\n```\ncode\n```\n";
+        let slides = parse(md);
+        let info = line_info(&slides[0]);
+
+        // The paragraph text should exist
+        assert!(info.iter().any(|(t, _)| t.contains("some text")));
+        // The code content should exist
+        assert!(info.iter().any(|(t, _)| t.contains("code")));
+
+        // No two consecutive blank non-bg lines (would show as double gap)
+        for w in info.windows(2) {
+            let both_blank = w[0].0.trim().is_empty()
+                && !w[0].1
+                && w[1].0.trim().is_empty()
+                && !w[1].1;
+            assert!(
+                !both_blank,
+                "found double blank gap: {:?}",
+                info
+            );
+        }
+    }
+
+    #[test]
+    fn three_consecutive_code_blocks() {
+        let md = "```\na\n```\n\n```\nb\n```\n\n```\nc\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        let a_idx = info.iter().position(|(t, _)| t.contains("a")).unwrap();
+        let b_idx = info.iter().position(|(t, _)| t.contains("b")).unwrap();
+        let c_idx = info.iter().position(|(t, _)| t.contains("c")).unwrap();
+
+        // Gap between block 1 and 2
+        let gap1 = &info[a_idx + 1..b_idx];
+        assert!(
+            gap1.iter().any(|(_, bg)| !bg),
+            "expected gap between block 1 and 2: {:?}",
+            gap1
+        );
+
+        // Gap between block 2 and 3
+        let gap2 = &info[b_idx + 1..c_idx];
+        assert!(
+            gap2.iter().any(|(_, bg)| !bg),
+            "expected gap between block 2 and 3: {:?}",
+            gap2
+        );
     }
 }
