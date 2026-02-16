@@ -1,9 +1,10 @@
 use crate::theme::Theme;
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Modifier, Style};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use std::io::Write;
 use std::process::{Command, Stdio};
+use syntect::parsing::SyntaxSet;
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
@@ -246,6 +247,11 @@ struct MdConverter {
     heading_text_buf: String,
     images: Vec<SlideImage>,
     pending_image_max_width: Option<f64>,
+    // Syntax highlighting
+    code_block_lang: Option<String>,
+    code_block_buf: String,
+    syntax_set: SyntaxSet,
+    syntect_theme: syntect::highlighting::Theme,
     // Frontmatter defaults
     default_layout: Option<SlideLayout>,
     default_transition: Option<TransitionKind>,
@@ -262,6 +268,7 @@ enum ListKind {
 impl MdConverter {
     fn new(theme: Theme, frontmatter: &Frontmatter) -> Self {
         let base_style = Style::default().fg(theme.fg);
+        let syntect_theme = theme.syntect_theme();
         Self {
             theme,
             slides: Vec::new(),
@@ -279,6 +286,10 @@ impl MdConverter {
             heading_text_buf: String::new(),
             images: Vec::new(),
             pending_image_max_width: None,
+            code_block_lang: None,
+            code_block_buf: String::new(),
+            syntax_set: SyntaxSet::load_defaults_newlines(),
+            syntect_theme,
             default_layout: frontmatter.layout.clone(),
             default_transition: frontmatter.transition.clone(),
             default_image_max_width: frontmatter.image_max_width,
@@ -310,6 +321,10 @@ impl MdConverter {
             )];
             bq_spans.extend(spans);
             self.lines.push(Line::from(bq_spans));
+        } else if self.in_code_block {
+            self.lines.push(
+                Line::from(spans).style(Style::default().bg(self.theme.surface)),
+            );
         } else {
             self.lines.push(Line::from(spans));
         }
@@ -319,8 +334,12 @@ impl MdConverter {
         if !self.current_spans.is_empty() {
             self.flush_line();
         }
-        // Trim trailing blank lines
-        while self.lines.last().is_some_and(|l| l.spans.is_empty()) {
+        // Trim trailing blank lines (but keep bg-styled padding lines)
+        while self
+            .lines
+            .last()
+            .is_some_and(|l| l.spans.is_empty() && l.style.bg.is_none())
+        {
             self.lines.pop();
         }
         let lines = std::mem::take(&mut self.lines);
@@ -485,12 +504,35 @@ impl MdConverter {
             }
 
             // --- Code Block ---
-            Event::Start(Tag::CodeBlock(_kind)) => {
+            Event::Start(Tag::CodeBlock(kind)) => {
                 self.in_code_block = true;
+                self.code_block_buf.clear();
+                self.code_block_lang = match kind {
+                    CodeBlockKind::Fenced(lang) => {
+                        let lang = lang.split(',').next().unwrap_or("").trim().to_string();
+                        if lang.is_empty() { None } else { Some(lang) }
+                    }
+                    CodeBlockKind::Indented => None,
+                };
                 self.flush_line();
+                // Replace preceding blank line (from paragraph end) with bg-colored padding,
+                // but keep the gap when following another code block.
+                if self.lines.last().is_some_and(|l| l.spans.is_empty()) {
+                    let prev_has_bg = self.lines.len() >= 2
+                        && self.lines[self.lines.len() - 2].style.bg.is_some();
+                    if !prev_has_bg {
+                        self.lines.pop();
+                    }
+                }
+                self.lines
+                    .push(Line::from("").style(Style::default().bg(self.theme.surface)));
             }
             Event::End(TagEnd::CodeBlock) => {
                 self.in_code_block = false;
+                self.current_spans.clear();
+                self.flush_code_block();
+                self.lines
+                    .push(Line::from("").style(Style::default().bg(self.theme.surface)));
                 self.lines.push(Line::default());
             }
 
@@ -552,14 +594,7 @@ impl MdConverter {
                 } else if self.in_image {
                     // Skip alt text of images
                 } else if self.in_code_block {
-                    let style = Style::default().fg(self.theme.fg).bg(self.theme.surface);
-                    for line in text.split('\n') {
-                        if !self.current_spans.is_empty() {
-                            self.flush_line();
-                        }
-                        self.current_spans
-                            .push(Span::styled(format!("  {line}"), style));
-                    }
+                    self.code_block_buf.push_str(&text);
                 } else {
                     self.current_spans
                         .push(Span::styled(text.to_string(), self.current_style()));
@@ -574,6 +609,66 @@ impl MdConverter {
             }
 
             _ => {}
+        }
+    }
+
+    fn flush_code_block(&mut self) {
+        let buf = std::mem::take(&mut self.code_block_buf);
+        let lang = self.code_block_lang.take();
+        let bg = self.theme.surface;
+        let code = buf.trim_end_matches('\n');
+
+        let syntax = lang.as_deref().and_then(|l| {
+            self.syntax_set.find_syntax_by_token(l).or_else(|| {
+                // Fallback: map common tokens missing from syntect defaults
+                let fallback = match l {
+                    "jsx" | "tsx" | "ts" | "typescript" => Some("js"),
+                    _ => None,
+                };
+                fallback.and_then(|f| self.syntax_set.find_syntax_by_token(f))
+            })
+        });
+
+        if let Some(syntax) = syntax {
+            let mut h = syntect::easy::HighlightLines::new(syntax, &self.syntect_theme);
+            for line in code.split('\n') {
+                let regions = h
+                    .highlight_line(line, &self.syntax_set)
+                    .unwrap_or_default();
+                let mut spans: Vec<Span<'static>> = vec![Span::styled(
+                    "  ",
+                    Style::default().bg(bg),
+                )];
+                for (syn_style, text) in regions {
+                    let fg_color = Color::Rgb(
+                        syn_style.foreground.r,
+                        syn_style.foreground.g,
+                        syn_style.foreground.b,
+                    );
+                    let mut style = Style::default().fg(fg_color).bg(bg);
+                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::BOLD) {
+                        style = style.add_modifier(Modifier::BOLD);
+                    }
+                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::ITALIC) {
+                        style = style.add_modifier(Modifier::ITALIC);
+                    }
+                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE) {
+                        style = style.add_modifier(Modifier::UNDERLINED);
+                    }
+                    spans.push(Span::styled(text.to_string(), style));
+                }
+                self.lines
+                    .push(Line::from(spans).style(Style::default().bg(bg)));
+            }
+        } else {
+            // Fallback: uniform style (no language or unknown language)
+            let style = Style::default().fg(self.theme.fg).bg(bg);
+            for line in code.split('\n') {
+                self.lines.push(
+                    Line::from(vec![Span::styled(format!("  {line}"), style)])
+                        .style(Style::default().bg(bg)),
+                );
+            }
         }
     }
 
@@ -678,5 +773,164 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             images: Vec::new(),
             transition: TransitionKind::default(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn test_theme() -> Theme {
+        Theme::default()
+    }
+
+    fn parse(md: &str) -> Vec<Slide> {
+        let fm = Frontmatter::default();
+        parse_slides(md, &test_theme(), &fm)
+    }
+
+    /// Helper: collect (text, has_bg) for each line in a slide.
+    fn line_info(slide: &Slide) -> Vec<(String, bool)> {
+        slide
+            .content
+            .lines
+            .iter()
+            .map(|l| {
+                let text: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+                let has_bg = l.style.bg.is_some()
+                    || l.spans.iter().any(|s| s.style.bg.is_some());
+                (text, has_bg)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn single_code_block() {
+        let md = "```\nhello\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        // Expected: bg_pad, "  hello"(bg)
+        // (trailing bg_pad is trimmed by flush_slide since Line::from("") has empty spans)
+        assert!(info.len() >= 2, "got {} lines: {:?}", info.len(), info);
+        // First line is bg padding
+        assert!(info[0].1, "first line should have bg");
+        // Content line
+        assert!(info[1].0.contains("hello"), "content line: {:?}", info[1]);
+        assert!(info[1].1, "content should have bg");
+    }
+
+    #[test]
+    fn consecutive_code_blocks_have_gap() {
+        let md = "```\nfirst\n```\n\n```\nsecond\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        // Find the two content lines
+        let first_idx = info.iter().position(|(t, _)| t.contains("first")).unwrap();
+        let second_idx = info.iter().position(|(t, _)| t.contains("second")).unwrap();
+
+        // There should be a non-bg (blank) line between the two blocks
+        let between = &info[first_idx + 1..second_idx];
+        let has_blank = between.iter().any(|(_, bg)| !bg);
+        assert!(
+            has_blank,
+            "expected a blank (non-bg) gap between code blocks, got: {:?}",
+            between
+        );
+    }
+
+    #[test]
+    fn consecutive_code_blocks_no_stale_spans() {
+        let md = "```\naaa\n```\n\n```\nbbb\n```\n";
+        let slides = parse(md);
+        let info = line_info(&slides[0]);
+
+        // No line should be just whitespace with bg (stale span artifact)
+        for (text, has_bg) in &info {
+            if text.trim().is_empty() && *has_bg {
+                // Only bg-padding lines (empty string) are allowed, not "  " leftover
+                assert!(
+                    text.is_empty(),
+                    "found stale whitespace-only bg line: {:?}",
+                    text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn code_block_after_paragraph_no_double_blank() {
+        let md = "some text\n\n```\ncode\n```\n";
+        let slides = parse(md);
+        let info = line_info(&slides[0]);
+
+        // The paragraph text should exist
+        assert!(info.iter().any(|(t, _)| t.contains("some text")));
+        // The code content should exist
+        assert!(info.iter().any(|(t, _)| t.contains("code")));
+
+        // No two consecutive blank non-bg lines (would show as double gap)
+        for w in info.windows(2) {
+            let both_blank = w[0].0.trim().is_empty()
+                && !w[0].1
+                && w[1].0.trim().is_empty()
+                && !w[1].1;
+            assert!(
+                !both_blank,
+                "found double blank gap: {:?}",
+                info
+            );
+        }
+    }
+
+    #[test]
+    fn code_block_at_slide_end_has_bottom_padding() {
+        let md = "# Title\n\n```\ncode\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        let code_idx = info.iter().position(|(t, _)| t.contains("code")).unwrap();
+        // There should be a bg-colored padding line after the code content
+        assert!(
+            info.len() > code_idx + 1,
+            "missing bottom padding after code block at slide end: {:?}",
+            info
+        );
+        assert!(
+            info[code_idx + 1].1,
+            "bottom padding should have bg: {:?}",
+            info
+        );
+    }
+
+    #[test]
+    fn three_consecutive_code_blocks() {
+        let md = "```\na\n```\n\n```\nb\n```\n\n```\nc\n```\n";
+        let slides = parse(md);
+        assert_eq!(slides.len(), 1);
+        let info = line_info(&slides[0]);
+
+        let a_idx = info.iter().position(|(t, _)| t.contains("a")).unwrap();
+        let b_idx = info.iter().position(|(t, _)| t.contains("b")).unwrap();
+        let c_idx = info.iter().position(|(t, _)| t.contains("c")).unwrap();
+
+        // Gap between block 1 and 2
+        let gap1 = &info[a_idx + 1..b_idx];
+        assert!(
+            gap1.iter().any(|(_, bg)| !bg),
+            "expected gap between block 1 and 2: {:?}",
+            gap1
+        );
+
+        // Gap between block 2 and 3
+        let gap2 = &info[b_idx + 1..c_idx];
+        assert!(
+            gap2.iter().any(|(_, bg)| !bg),
+            "expected gap between block 2 and 3: {:?}",
+            gap2
+        );
     }
 }

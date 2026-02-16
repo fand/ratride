@@ -63,6 +63,15 @@ fn main() {
 
 > This is a blockquote.
 
+```jsx
+function test() {
+  const name = "world";
+  console.log(`Hello ${}!`);
+  return <div>{`Hello ${name}`}</div>;
+}
+```
+
+
 ---
 
 <!-- transition: lines -->

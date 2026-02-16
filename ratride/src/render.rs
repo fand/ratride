@@ -2,6 +2,7 @@ use crate::markdown::{Slide, SlideLayout};
 use crate::theme::Theme;
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
+    text::Text,
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
     Frame,
 };
@@ -43,6 +44,8 @@ pub fn draw_default(
 ) -> Vec<ImagePlacement> {
     let content_area = area.inner(Margin::new(2, 1));
 
+    fill_line_backgrounds(&slide.content, scroll, frame, content_area);
+
     let paragraph = Paragraph::new(slide.content.clone())
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
@@ -72,6 +75,8 @@ pub fn draw_center(
     let [centered_area] = Layout::vertical([Constraint::Length(content_height)])
         .flex(Flex::Center)
         .areas(content_area);
+
+    fill_line_backgrounds(&slide.content, scroll, frame, centered_area);
 
     let paragraph = Paragraph::new(slide.content.clone())
         .alignment(Alignment::Center)
@@ -157,6 +162,25 @@ pub fn draw_status_bar(
         ),
         area,
     );
+}
+
+/// Pre-fill buffer rows with Line::style background for full-width code block bg.
+fn fill_line_backgrounds(content: &Text<'_>, scroll: u16, frame: &mut Frame, area: Rect) {
+    let buf = frame.buffer_mut();
+    for (i, line) in content.lines.iter().enumerate() {
+        let y_offset = i as i32 - scroll as i32;
+        if y_offset < 0 || y_offset >= area.height as i32 {
+            continue;
+        }
+        if let Some(bg) = line.style.bg {
+            let y = area.y + y_offset as u16;
+            for x in area.x..area.x + area.width {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_bg(bg);
+                }
+            }
+        }
+    }
 }
 
 /// Compute image placement rect within a content area, accounting for scroll.

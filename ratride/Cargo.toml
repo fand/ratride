@@ -20,3 +20,4 @@ image = "0.25"
 tachyonfx = "0.23"
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
+syntect = { version = "5", default-features = false, features = ["default-themes", "default-syntaxes", "regex-fancy", "plist-load"] }
