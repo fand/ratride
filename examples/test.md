@@ -63,9 +63,11 @@ fn main() {
 
 > This is a blockquote.
 
-```rust
-fn main() {
-    println!("Hello, world!");
+```jsx
+function test() {
+  const name = "world";
+  console.log(`Hello ${}!`);
+  return <div>{`Hello ${name}`}</div>;
 }
 ```
 
