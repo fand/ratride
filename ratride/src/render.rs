@@ -16,6 +16,10 @@ pub struct ImagePlacement {
     pub width: u16,
     pub height: u16,
     pub path: String,
+    /// True when image top is scrolled off-screen.
+    pub clip_top: bool,
+    /// Original (unclipped) image height in cells.
+    pub full_height: u16,
 }
 
 /// Draw a slide's main content area (dispatches by layout).
@@ -149,7 +153,7 @@ pub fn draw_status_bar(
         SlideLayout::TwoColumn => " [two-column]",
     };
     let status = format!(
-        " ←/→:page  j/k:scroll  q:quit{}    [{}/{}]",
+        " ←/→:page  ↓/↑:scroll  q:quit{}    [{}/{}]",
         layout_label,
         current_page + 1,
         total,
@@ -223,7 +227,7 @@ fn compute_image_placement(
         // Terminal cells are typically ~2x taller than wide in pixels.
         let cell_aspect = 2.0_f64;
         let display_w =
-            ((h as f64) * (pixel_width as f64) / (pixel_height as f64) * cell_aspect) as u16;
+            ((height as f64) * (pixel_width as f64) / (pixel_height as f64) * cell_aspect) as u16;
         let display_w = display_w.min(max_w);
         let x_offset = (content_area.width.saturating_sub(display_w)) / 2;
         (content_area.x + x_offset, display_w)
@@ -243,5 +247,7 @@ fn compute_image_placement(
         width: w,
         height: h,
         path: path.to_string(),
+        clip_top: y_start < 0,
+        full_height: height,
     })
 }

@@ -107,9 +107,10 @@ fn is_iterm2() -> bool {
 
 enum ImageBackend {
     /// Write iTerm2 escape sequences directly to stdout (presenterm-style).
-    /// Stores pre-encoded base64 data and byte length for each image.
+    /// Stores pre-encoded base64 data and decoded images for cropping.
     Iterm2 {
         images: HashMap<String, (usize, String)>,
+        dyn_images: HashMap<String, image::DynamicImage>,
     },
     /// Use ratatui-image for Kitty/Sixel/Halfblocks.
     RatatuiImage {
@@ -145,6 +146,7 @@ impl App {
 
         let image_backend = if is_iterm2() {
             let mut images: HashMap<String, (usize, String)> = HashMap::new();
+            let mut dyn_images: HashMap<String, image::DynamicImage> = HashMap::new();
             for slide in &slides {
                 for img in &slide.images {
                     if images.contains_key(&img.path) {
@@ -155,13 +157,17 @@ impl App {
                         if let Ok((w, h)) = image::image_dimensions(&img_path) {
                             dims.insert(img.path.clone(), (w, h));
                         }
+                        // Decode image for potential cropping during scroll.
+                        if let Ok(dyn_img) = image::load_from_memory(&data) {
+                            dyn_images.insert(img.path.clone(), dyn_img);
+                        }
                         let size = data.len();
                         let b64 = STANDARD.encode(&data);
                         images.insert(img.path.clone(), (size, b64));
                     }
                 }
             }
-            ImageBackend::Iterm2 { images }
+            ImageBackend::Iterm2 { images, dyn_images }
         } else {
             let mut states: HashMap<String, StatefulProtocol> = HashMap::new();
             let picker = Picker::from_query_stdio().ok();
@@ -249,6 +255,15 @@ impl App {
 
     fn scroll_offset_mut(&mut self) -> &mut u16 {
         &mut self.scroll_offsets[self.current_page]
+    }
+
+    /// Returns true when the current slide content exceeds the visible area.
+    fn can_scroll(&self) -> bool {
+        let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
+        // main_area height = term_h - 1 (status bar), content_area = main_area - 2 (margin)
+        let visible = term_h.saturating_sub(3) as usize;
+        let content_len = self.slides[self.current_page].content.lines.len();
+        content_len > visible
     }
 
     fn goto_page(&mut self, page: usize) {
@@ -534,22 +549,57 @@ impl App {
 
     /// Write iTerm2 inline image escape sequences directly to stdout.
     fn flush_iterm2_images(&self) -> io::Result<()> {
-        if let ImageBackend::Iterm2 { ref images } = self.image_backend {
+        if let ImageBackend::Iterm2 {
+            ref images,
+            ref dyn_images,
+        } = self.image_backend
+        {
             let pending = &self.pending_images;
             if pending.is_empty() {
                 return Ok(());
             }
             let mut stdout = io::stdout();
             for img in pending {
-                if let Some((size, b64)) = images.get(&img.path) {
-                    crossterm::execute!(stdout, MoveTo(img.x, img.y))?;
-                    write!(
-                        stdout,
-                        "\x1b]1337;File=size={};width={};height={};inline=1;preserveAspectRatio=1:{}\x07",
-                        size, img.width, img.height, b64,
-                    )?;
-                    stdout.flush()?;
-                }
+                let (size, b64) = if img.full_height > img.height {
+                    // Image partially off-screen: crop the source image to the visible portion.
+                    if let Some(dyn_img) = dyn_images.get(&img.path) {
+                        let pix_h = dyn_img.height();
+                        let pix_w = dyn_img.width();
+                        let crop_y = if img.clip_top {
+                            (pix_h as f64 * (img.full_height - img.height) as f64
+                                / img.full_height as f64) as u32
+                        } else {
+                            0
+                        };
+                        let crop_h = (pix_h as f64 * img.height as f64
+                            / img.full_height as f64) as u32;
+                        let cropped = dyn_img.crop_imm(0, crop_y, pix_w, crop_h);
+                        let mut buf = std::io::Cursor::new(Vec::new());
+                        cropped
+                            .write_to(&mut buf, image::ImageFormat::Png)
+                            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                        let bytes = buf.into_inner();
+                        let size = bytes.len();
+                        let b64 = STANDARD.encode(&bytes);
+                        (size, b64)
+                    } else if let Some((size, b64)) = images.get(&img.path) {
+                        (*size, b64.clone())
+                    } else {
+                        continue;
+                    }
+                } else if let Some((size, b64)) = images.get(&img.path) {
+                    (*size, b64.clone())
+                } else {
+                    continue;
+                };
+
+                crossterm::execute!(stdout, MoveTo(img.x, img.y))?;
+                write!(
+                    stdout,
+                    "\x1b]1337;File=size={};width={};height={};inline=1;preserveAspectRatio=1:{}\x07",
+                    size, img.width, img.height, b64,
+                )?;
+                stdout.flush()?;
             }
         }
         Ok(())
@@ -602,7 +652,33 @@ impl App {
             }
             ImageBackend::RatatuiImage { states } => {
                 if let Some(state) = states.get_mut(&placement.path) {
-                    StatefulImage::default().render(img_area, frame.buffer_mut(), state);
+                    if placement.full_height > placement.height {
+                        // Image partially off-screen: render at full size into temp buffer,
+                        // then copy the visible portion to the frame.
+                        let clip_rows = if placement.clip_top {
+                            placement.full_height - placement.height
+                        } else {
+                            0
+                        };
+                        let full_rect =
+                            Rect::new(0, 0, placement.width, placement.full_height);
+                        let mut temp_buf = Buffer::empty(full_rect);
+                        StatefulImage::new().render(full_rect, &mut temp_buf, state);
+
+                        let buf = frame.buffer_mut();
+                        for dy in 0..placement.height {
+                            for dx in 0..placement.width {
+                                let src = &temp_buf[(dx, clip_rows + dy)];
+                                if let Some(dst) =
+                                    buf.cell_mut((placement.x + dx, placement.y + dy))
+                                {
+                                    *dst = src.clone();
+                                }
+                            }
+                        }
+                    } else {
+                        StatefulImage::new().render(img_area, frame.buffer_mut(), state);
+                    }
                 }
             }
         }
@@ -618,16 +694,16 @@ impl App {
                     KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
                     KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => self.next_page(),
                     KeyCode::Left | KeyCode::Char('h') => self.prev_page(),
-                    KeyCode::Char('j') | KeyCode::Down => {
+                    KeyCode::Char('j') | KeyCode::Down if self.can_scroll() => {
                         *self.scroll_offset_mut() = self.scroll_offset().saturating_add(1);
                     }
-                    KeyCode::Char('k') | KeyCode::Up => {
+                    KeyCode::Char('k') | KeyCode::Up if self.can_scroll() => {
                         *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
                     }
-                    KeyCode::Char('d') => {
+                    KeyCode::Char('d') if self.can_scroll() => {
                         *self.scroll_offset_mut() = self.scroll_offset().saturating_add(10);
                     }
-                    KeyCode::Char('u') => {
+                    KeyCode::Char('u') if self.can_scroll() => {
                         *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
                     }
                     _ => {}
