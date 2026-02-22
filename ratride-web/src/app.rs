@@ -1,4 +1,5 @@
 use crate::backend::CanvasBackend;
+use crate::overlay::DomOverlay;
 use ratride::color::{anim_color, blend_color, hue_to_rgb};
 use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_slides};
 use ratride::render::{self, ImagePlacement};
@@ -29,6 +30,9 @@ pub struct WebApp {
     rows: u16,
     images: HashMap<String, HtmlImageElement>,
     pending_placements: Vec<ImagePlacement>,
+    overlay: DomOverlay,
+    overlay_last_page: usize,
+    overlay_last_scroll: u16,
 }
 
 impl WebApp {
@@ -38,6 +42,7 @@ impl WebApp {
         theme: Theme,
         frontmatter: &Frontmatter,
         base_url: &str,
+        overlay: DomOverlay,
     ) -> Self {
         let cols = backend.cols();
         let rows = backend.rows();
@@ -76,6 +81,9 @@ impl WebApp {
             rows,
             images,
             pending_placements: Vec::new(),
+            overlay,
+            overlay_last_page: usize::MAX,
+            overlay_last_scroll: u16::MAX,
         }
     }
 
@@ -195,7 +203,40 @@ impl WebApp {
         // Draw images on top of the cell grid (only when not in transition)
         if self.effect.is_none() {
             self.draw_images();
+            self.update_overlay();
+        } else {
+            self.overlay.set_visible(false);
         }
+    }
+
+    fn update_overlay(&mut self) {
+        let page = self.current_page;
+        let scroll = self.scroll_offset();
+        if page == self.overlay_last_page && scroll == self.overlay_last_scroll {
+            self.overlay.set_visible(true);
+            return;
+        }
+        self.overlay_last_page = page;
+        self.overlay_last_scroll = scroll;
+
+        let slide = &self.slides[page];
+        let cell_w = self.terminal.backend().cell_width();
+        let cell_h = self.terminal.backend().cell_height();
+        // Content area offset: Margin::new(2, 1) in render.rs draw_default
+        let content_offset_x = 2.0 * cell_w;
+        let content_offset_y = 1.0 * cell_h;
+        let visible_rows = self.rows.saturating_sub(3); // main_area minus margins
+
+        self.overlay.update(
+            &slide.semantics,
+            scroll,
+            content_offset_x,
+            content_offset_y,
+            cell_w,
+            cell_h,
+            visible_rows,
+        );
+        self.overlay.set_visible(true);
     }
 
     fn draw_images(&self) {

@@ -69,6 +69,14 @@ impl CanvasBackend {
         self.rows
     }
 
+    pub fn cell_width(&self) -> f64 {
+        self.cell_width
+    }
+
+    pub fn cell_height(&self) -> f64 {
+        self.cell_height
+    }
+
     pub fn resize(&mut self) {
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;

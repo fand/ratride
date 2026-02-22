@@ -140,6 +140,23 @@ pub enum TransitionKind {
     SlideRgb,
 }
 
+/// Semantic element for a11y overlay in web builds.
+#[derive(Clone, Debug)]
+pub enum SemanticElement {
+    Heading {
+        level: u8,
+        text: String,
+        line_index: usize,
+    },
+    Link {
+        url: String,
+        text: String,
+        line_index: usize,
+        start_col: usize,
+        end_col: usize,
+    },
+}
+
 /// Image reference found in a slide.
 #[derive(Clone, Debug)]
 pub struct SlideImage {
@@ -165,6 +182,8 @@ pub struct Slide {
     pub images: Vec<SlideImage>,
     /// Transition effect for entering this slide.
     pub transition: TransitionKind,
+    /// Semantic elements for a11y overlay (headings, links).
+    pub semantics: Vec<SemanticElement>,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -249,6 +268,17 @@ struct MdConverter {
     heading_text_buf: String,
     images: Vec<SlideImage>,
     pending_image_max_width: Option<f64>,
+    // Semantic elements for a11y
+    semantics: Vec<SemanticElement>,
+    semantic_heading_level: u8,
+    semantic_heading_buf: String,
+    semantic_heading_line: usize,
+    in_semantic_heading: bool,
+    in_link: bool,
+    link_url: String,
+    link_text_buf: String,
+    link_start_line: usize,
+    link_start_col: usize,
     // Syntax highlighting
     code_block_lang: Option<String>,
     code_block_buf: String,
@@ -288,6 +318,16 @@ impl MdConverter {
             heading_text_buf: String::new(),
             images: Vec::new(),
             pending_image_max_width: None,
+            semantics: Vec::new(),
+            semantic_heading_level: 0,
+            semantic_heading_buf: String::new(),
+            semantic_heading_line: 0,
+            in_semantic_heading: false,
+            in_link: false,
+            link_url: String::new(),
+            link_text_buf: String::new(),
+            link_start_line: 0,
+            link_start_col: 0,
             code_block_lang: None,
             code_block_buf: String::new(),
             syntax_set: SyntaxSet::load_defaults_newlines(),
@@ -358,6 +398,7 @@ impl MdConverter {
                 .take()
                 .or_else(|| self.default_layout.clone())
                 .unwrap_or_default();
+            let semantics = std::mem::take(&mut self.semantics);
             let mut slide = match layout {
                 SlideLayout::TwoColumn => split_two_column(lines),
                 _ => Slide {
@@ -366,10 +407,12 @@ impl MdConverter {
                     right_content: None,
                     images: Vec::new(),
                     transition: TransitionKind::default(),
+                    semantics: Vec::new(),
                 },
             };
             slide.images = images;
             slide.transition = transition;
+            slide.semantics = semantics;
             self.slides.push(slide);
         }
     }
@@ -441,6 +484,18 @@ impl MdConverter {
                         .add_modifier(Modifier::BOLD),
                 };
                 self.push_style(|_| style);
+                // Track heading for semantic overlay
+                self.in_semantic_heading = true;
+                self.semantic_heading_buf.clear();
+                self.semantic_heading_level = match level {
+                    HeadingLevel::H1 => 1,
+                    HeadingLevel::H2 => 2,
+                    HeadingLevel::H3 => 3,
+                    HeadingLevel::H4 => 4,
+                    HeadingLevel::H5 => 5,
+                    HeadingLevel::H6 => 6,
+                };
+                self.semantic_heading_line = self.lines.len();
                 let use_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
                 if use_figlet {
                     // Apply default figlet if no per-slide directive
@@ -460,6 +515,15 @@ impl MdConverter {
                 }
             }
             Event::End(TagEnd::Heading(_)) => {
+                // Emit semantic heading
+                if self.in_semantic_heading {
+                    self.in_semantic_heading = false;
+                    self.semantics.push(SemanticElement::Heading {
+                        level: self.semantic_heading_level,
+                        text: self.semantic_heading_buf.clone(),
+                        line_index: self.semantic_heading_line,
+                    });
+                }
                 if self.in_heading {
                     self.in_heading = false;
                     let style = self.current_style();
@@ -589,8 +653,40 @@ impl MdConverter {
                 self.flush_slide();
             }
 
+            // --- Links ---
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                self.in_link = true;
+                self.link_url = dest_url.to_string();
+                self.link_text_buf.clear();
+                self.link_start_line = self.lines.len();
+                self.link_start_col = self.current_spans.iter().map(|s| s.content.len()).sum();
+                let link_color = self.theme.link;
+                self.push_style(|s| s.fg(link_color).add_modifier(Modifier::UNDERLINED));
+            }
+            Event::End(TagEnd::Link) => {
+                let end_col: usize =
+                    self.link_start_col + self.link_text_buf.len();
+                self.semantics.push(SemanticElement::Link {
+                    url: std::mem::take(&mut self.link_url),
+                    text: std::mem::take(&mut self.link_text_buf),
+                    line_index: self.link_start_line,
+                    start_col: self.link_start_col,
+                    end_col,
+                });
+                self.in_link = false;
+                self.pop_style();
+            }
+
             // --- Text ---
             Event::Text(text) => {
+                // Accumulate into semantic buffers
+                if self.in_semantic_heading {
+                    self.semantic_heading_buf.push_str(&text);
+                }
+                if self.in_link {
+                    self.link_text_buf.push_str(&text);
+                }
+
                 if self.in_heading {
                     self.heading_text_buf.push_str(&text);
                 } else if self.in_image {
@@ -741,6 +837,7 @@ impl MdConverter {
                 right_content: None,
                 images: std::mem::take(&mut self.images),
                 transition,
+                semantics: std::mem::take(&mut self.semantics),
             });
         }
         self.slides
@@ -775,6 +872,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 right_content: Some(Text::from(right)),
                 images: Vec::new(),
                 transition: TransitionKind::default(),
+                semantics: Vec::new(),
             }
         }
         None => Slide {
@@ -783,6 +881,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             right_content: None,
             images: Vec::new(),
             transition: TransitionKind::default(),
+            semantics: Vec::new(),
         },
     }
 }

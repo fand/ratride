@@ -141,3 +141,5 @@ Just like `Lines` transition, but with color rotating effect.
 # Thank you!
 
 That's all for the demo.
+
+GitHub: [fand/ratride](https://github.com/fand/ratride)

@@ -1,8 +1,10 @@
 mod app;
 mod backend;
+mod overlay;
 
 use app::WebApp;
 use backend::CanvasBackend;
+use overlay::DomOverlay;
 use ratride::markdown::parse_frontmatter;
 use ratride::theme;
 use std::cell::RefCell;
@@ -60,7 +62,8 @@ impl RatRide {
         let fs = font_size.unwrap_or(16.0);
         let base = base_url.as_deref().unwrap_or("");
         let backend = CanvasBackend::new(canvas.clone(), fs);
-        let mut web_app = WebApp::new(backend, body, resolved_theme, &frontmatter, base);
+        let overlay = DomOverlay::new("ratride-overlay");
+        let mut web_app = WebApp::new(backend, body, resolved_theme, &frontmatter, base, overlay);
         web_app.init();
 
         let app = Rc::new(RefCell::new(web_app));

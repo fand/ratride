@@ -14,6 +14,7 @@ pub struct Theme {
     pub list_bullet: Color,
     pub status_fg: Color,
     pub status_bg: Color,
+    pub link: Color,
 }
 
 fn hex(s: &str) -> Color {
@@ -38,6 +39,7 @@ impl Theme {
             list_bullet: hex("6c7086"),
             status_fg: hex("cdd6f4"),
             status_bg: hex("313244"),
+            link: hex("89b4fa"),
         }
     }
 
@@ -55,6 +57,7 @@ impl Theme {
             list_bullet: hex("6e738d"),
             status_fg: hex("cad3f5"),
             status_bg: hex("363a4f"),
+            link: hex("8aadf4"),
         }
     }
 
@@ -72,6 +75,7 @@ impl Theme {
             list_bullet: hex("737994"),
             status_fg: hex("c6d0f5"),
             status_bg: hex("414559"),
+            link: hex("8caaee"),
         }
     }
 
@@ -89,6 +93,7 @@ impl Theme {
             list_bullet: hex("9ca0b0"),
             status_fg: hex("4c4f69"),
             status_bg: hex("ccd0da"),
+            link: hex("1e66f5"),
         }
     }
 }
