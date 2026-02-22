@@ -11,13 +11,26 @@ categories = ["command-line-utilities"]
 rust-version = "1.85"
 exclude = ["../demo.png", "../main.md", "../test.md", "../PLAN.md"]
 
+[lib]
+name = "ratride"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ratride"
+path = "src/main.rs"
+required-features = ["terminal"]
+
+[features]
+default = ["terminal"]
+terminal = ["dep:crossterm", "dep:ratatui-image", "dep:image", "dep:clap", "dep:base64"]
+
 [dependencies]
-ratatui = "0.30"
+ratatui = { version = "0.30", default-features = false }
 pulldown-cmark = "0.13"
-crossterm = "0.28"
-ratatui-image = { version = "10", default-features = false, features = ["image-defaults", "crossterm"] }
-image = "0.25"
+crossterm = { version = "0.28", optional = true }
+ratatui-image = { version = "10", default-features = false, features = ["image-defaults", "crossterm"], optional = true }
+image = { version = "0.25", optional = true }
 tachyonfx = "0.23"
-base64 = "0.22"
-clap = { version = "4", features = ["derive"] }
+base64 = { version = "0.22", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
 syntect = { version = "5", default-features = false, features = ["default-themes", "default-syntaxes", "regex-fancy", "plist-load"] }

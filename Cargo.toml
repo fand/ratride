@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["ratride"]
+members = ["ratride", "ratride-web"]
 
 [workspace.metadata.release]
 publish = true

@@ -1,7 +1,3 @@
-mod markdown;
-mod render;
-mod theme;
-
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
@@ -9,9 +5,10 @@ use std::time::Instant;
 
 use clap::Parser;
 
-use crate::markdown::{Frontmatter, Slide, TransitionKind, parse_frontmatter, parse_slides};
-use crate::render::ImagePlacement;
-use crate::theme::Theme;
+use ratride::color::{anim_color, blend_color, hue_to_rgb};
+use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_frontmatter, parse_slides};
+use ratride::render::{self, ImagePlacement};
+use ratride::theme::{self, Theme};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -19,7 +16,6 @@ use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
-    style::Color,
     widgets::StatefulWidget,
 };
 use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
@@ -28,67 +24,6 @@ use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
 const LINE_DUR_MS: f32 = 600.0; // how long each line's animation takes
 const STAGGER_MS: f32 = 60.0; // delay before next line starts
-
-/// Linearly blend two colors. At t=0 returns `a`, at t=1 returns `b`.
-/// Non-RGB colors (e.g. Color::Reset) are returned as-is to avoid
-/// introducing explicit background colors where the terminal default is used.
-fn blend_color(a: Color, b: Color, t: f32) -> Color {
-    match (a, b) {
-        (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
-            let inv = 1.0 - t;
-            Color::Rgb(
-                (ar as f32 * inv + br as f32 * t) as u8,
-                (ag as f32 * inv + bg as f32 * t) as u8,
-                (ab as f32 * inv + bb as f32 * t) as u8,
-            )
-        }
-        _ => b,
-    }
-}
-
-/// Convert a hue (0-360) to an RGB color (full saturation & value).
-fn hue_to_rgb(hue: f32) -> Color {
-    let h = (hue % 360.0) / 60.0;
-    let i = h.floor() as u8;
-    let f = h - h.floor();
-    let q = (255.0 * (1.0 - f)) as u8;
-    let t = (255.0 * f) as u8;
-    match i {
-        0 => Color::Rgb(255, t, 0),
-        1 => Color::Rgb(q, 255, 0),
-        2 => Color::Rgb(0, 255, t),
-        3 => Color::Rgb(0, q, 255),
-        4 => Color::Rgb(t, 0, 255),
-        _ => Color::Rgb(255, 0, q),
-    }
-}
-
-/// Animated color gradient: blue → cyan → magenta → white → red.
-fn anim_color(progress: f32) -> Color {
-    let lerp_rgb = |a: (u8, u8, u8), b: (u8, u8, u8), t: f32| -> Color {
-        let inv = 1.0 - t;
-        Color::Rgb(
-            (a.0 as f32 * inv + b.0 as f32 * t) as u8,
-            (a.1 as f32 * inv + b.1 as f32 * t) as u8,
-            (a.2 as f32 * inv + b.2 as f32 * t) as u8,
-        )
-    };
-    let blue = (80, 80, 255);
-    let cyan = (100, 255, 255);
-    let magenta = (255, 100, 255);
-    let white = (255, 255, 255);
-    let red = (255, 100, 100);
-
-    if progress < 0.8 {
-        lerp_rgb(blue, cyan, progress * 1.25)
-    } else if progress < 0.85 {
-        lerp_rgb(cyan, magenta, progress * 20.0 - 16.0)
-    } else if progress < 0.9 {
-        lerp_rgb(magenta, red, progress * 20.0 - 17.0)
-    } else {
-        lerp_rgb(red, white, progress * 10.0 - 9.0)
-    }
-}
 
 /// Detect if the terminal supports iTerm2 inline image protocol.
 fn is_iterm2() -> bool {

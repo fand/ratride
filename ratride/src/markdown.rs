@@ -2,7 +2,9 @@ use crate::theme::Theme;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Write;
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::{Command, Stdio};
 use syntect::parsing::SyntaxSet;
 
@@ -672,6 +674,7 @@ impl MdConverter {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn render_figlet_heading(&mut self, text: &str, style: Style) {
         let style = style.remove_modifier(Modifier::UNDERLINED);
         let mut cmd = Command::new("figlet");
@@ -709,6 +712,14 @@ impl MdConverter {
             self.lines
                 .push(Line::from(Span::styled(line.to_string(), style)));
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn render_figlet_heading(&mut self, text: &str, style: Style) {
+        let style = style.remove_modifier(Modifier::UNDERLINED);
+        self.current_spans
+            .push(Span::styled(text.to_string(), style));
+        self.flush_line();
     }
 
     fn finish_slides(mut self) -> Vec<Slide> {
