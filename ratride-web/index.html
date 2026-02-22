@@ -18,13 +18,16 @@
       await init();
 
       const canvas = document.getElementById('ratride');
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
 
-      window.addEventListener('resize', () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-      });
+      function resizeCanvas() {
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+      }
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
 
       // Fetch example markdown or use inline fallback
       const mdPath = '../examples/test.md';

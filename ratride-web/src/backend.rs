@@ -16,6 +16,7 @@ pub struct CanvasBackend {
     cell_width: f64,
     cell_height: f64,
     font_size: f64,
+    dpr: f64,
 }
 
 impl CanvasBackend {
@@ -27,16 +28,26 @@ impl CanvasBackend {
             .dyn_into()
             .unwrap();
 
-        let font = format!("{font_size}px monospace");
+        let dpr = web_sys::window()
+            .map(|w| w.device_pixel_ratio())
+            .unwrap_or(1.0);
+
+        // Scale context for high-DPI displays
+        let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+
+        // Measure cell size in CSS pixels (after DPR scaling is applied)
+        let scaled_font_size = font_size;
+        let font = format!("{scaled_font_size}px monospace");
         ctx.set_font(&font);
         let metrics = ctx.measure_text("W").unwrap();
         let cell_width = metrics.width();
-        let cell_height = font_size * 1.2;
+        let cell_height = scaled_font_size * 1.2;
 
-        let canvas_w = canvas.width() as f64;
-        let canvas_h = canvas.height() as f64;
-        let cols = (canvas_w / cell_width) as u16;
-        let rows = (canvas_h / cell_height) as u16;
+        // Canvas size is in physical pixels; grid is in CSS pixels
+        let css_w = canvas.width() as f64 / dpr;
+        let css_h = canvas.height() as f64 / dpr;
+        let cols = (css_w / cell_width) as u16;
+        let rows = (css_h / cell_height) as u16;
 
         Self {
             canvas,
@@ -46,6 +57,7 @@ impl CanvasBackend {
             cell_width,
             cell_height,
             font_size,
+            dpr,
         }
     }
 
@@ -58,12 +70,13 @@ impl CanvasBackend {
     }
 
     pub fn resize(&mut self) {
-        let canvas_w = self.canvas.width() as f64;
-        let canvas_h = self.canvas.height() as f64;
-        self.cols = (canvas_w / self.cell_width) as u16;
-        self.rows = (canvas_h / self.cell_height) as u16;
+        let css_w = self.canvas.width() as f64 / self.dpr;
+        let css_h = self.canvas.height() as f64 / self.dpr;
+        self.cols = (css_w / self.cell_width) as u16;
+        self.rows = (css_h / self.cell_height) as u16;
 
-        // Re-set font after resize (canvas resets context state)
+        // Re-apply DPR scale + font (setTransform is absolute, won't compound)
+        let _ = self.ctx.set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
         let font = format!("{}px monospace", self.font_size);
         self.ctx.set_font(&font);
     }
