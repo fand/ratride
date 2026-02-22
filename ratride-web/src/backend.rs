@@ -68,18 +68,31 @@ impl CanvasBackend {
         self.ctx.set_font(&font);
     }
 
-    /// Draw an image on the canvas at cell coordinates.
+    /// Draw an image on the canvas at cell coordinates, preserving aspect ratio.
     pub fn draw_image(&self, img: &HtmlImageElement, x: u16, y: u16, w: u16, h: u16) {
         if !img.complete() || img.natural_width() == 0 {
             return;
         }
-        let px = x as f64 * self.cell_width;
-        let py = y as f64 * self.cell_height;
-        let pw = w as f64 * self.cell_width;
-        let ph = h as f64 * self.cell_height;
+        let box_px = x as f64 * self.cell_width;
+        let box_py = y as f64 * self.cell_height;
+        let box_pw = w as f64 * self.cell_width;
+        let box_ph = h as f64 * self.cell_height;
+
+        let nat_w = img.natural_width() as f64;
+        let nat_h = img.natural_height() as f64;
+
+        // Fit image within the box while preserving aspect ratio
+        let scale = (box_pw / nat_w).min(box_ph / nat_h);
+        let draw_w = nat_w * scale;
+        let draw_h = nat_h * scale;
+
+        // Center within the box
+        let draw_x = box_px + (box_pw - draw_w) / 2.0;
+        let draw_y = box_py + (box_ph - draw_h) / 2.0;
+
         let _ = self
             .ctx
-            .draw_image_with_html_image_element_and_dw_and_dh(img, px, py, pw, ph);
+            .draw_image_with_html_image_element_and_dw_and_dh(img, draw_x, draw_y, draw_w, draw_h);
     }
 
     fn color_to_css(color: Color, fallback: &str) -> String {
