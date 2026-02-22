@@ -27,9 +27,10 @@
       });
 
       // Fetch example markdown or use inline fallback
+      const mdPath = '../examples/test.md';
       let md;
       try {
-        const resp = await fetch('../examples/test.md');
+        const resp = await fetch(mdPath);
         if (resp.ok) md = await resp.text();
       } catch (_) {}
 
@@ -55,7 +56,9 @@ This slide fades in.
 `;
       }
 
-      RatRide.run(md);
+      // Resolve base URL for relative image paths in the markdown
+      const baseUrl = new URL(mdPath, window.location.href).href.replace(/[^/]*$/, '');
+      RatRide.run(md, undefined, undefined, undefined, baseUrl);
     }
 
     main();

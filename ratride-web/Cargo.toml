@@ -14,6 +14,7 @@ wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = [
     "Window", "Document", "HtmlCanvasElement",
     "CanvasRenderingContext2d", "KeyboardEvent", "TextMetrics",
+    "HtmlImageElement",
 ] }
 js-sys = "0.3"
 console_error_panic_hook = "0.1"

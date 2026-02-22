@@ -6,7 +6,7 @@ use ratatui::{
 };
 use std::io;
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
 
 pub struct CanvasBackend {
     canvas: HtmlCanvasElement,
@@ -66,6 +66,20 @@ impl CanvasBackend {
         // Re-set font after resize (canvas resets context state)
         let font = format!("{}px monospace", self.font_size);
         self.ctx.set_font(&font);
+    }
+
+    /// Draw an image on the canvas at cell coordinates.
+    pub fn draw_image(&self, img: &HtmlImageElement, x: u16, y: u16, w: u16, h: u16) {
+        if !img.complete() || img.natural_width() == 0 {
+            return;
+        }
+        let px = x as f64 * self.cell_width;
+        let py = y as f64 * self.cell_height;
+        let pw = w as f64 * self.cell_width;
+        let ph = h as f64 * self.cell_height;
+        let _ = self
+            .ctx
+            .draw_image_with_html_image_element_and_dw_and_dh(img, px, py, pw, ph);
     }
 
     fn color_to_css(color: Color, fallback: &str) -> String {

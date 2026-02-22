@@ -1,14 +1,16 @@
 use crate::backend::CanvasBackend;
 use ratride::color::{anim_color, blend_color, hue_to_rgb};
 use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_slides};
-use ratride::render;
+use ratride::render::{self, ImagePlacement};
 use ratride::theme::Theme;
 use ratatui::{
     Terminal,
     buffer::Buffer,
     layout::{Constraint, Layout},
 };
+use std::collections::HashMap;
 use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
+use web_sys::HtmlImageElement;
 
 const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
@@ -25,6 +27,8 @@ pub struct WebApp {
     last_timestamp: f64,
     cols: u16,
     rows: u16,
+    images: HashMap<String, HtmlImageElement>,
+    pending_placements: Vec<ImagePlacement>,
 }
 
 impl WebApp {
@@ -33,12 +37,31 @@ impl WebApp {
         markdown: &str,
         theme: Theme,
         frontmatter: &Frontmatter,
+        base_url: &str,
     ) -> Self {
         let cols = backend.cols();
         let rows = backend.rows();
         let slides = parse_slides(markdown, &theme, frontmatter);
         let len = slides.len().max(1);
         let terminal = Terminal::new(backend).expect("terminal creation");
+
+        // Collect unique image paths and preload them
+        let mut images: HashMap<String, HtmlImageElement> = HashMap::new();
+        for slide in &slides {
+            for img in &slide.images {
+                if images.contains_key(&img.path) {
+                    continue;
+                }
+                let el = HtmlImageElement::new().expect("create img element");
+                let src = if img.path.starts_with("http://") || img.path.starts_with("https://") {
+                    img.path.clone()
+                } else {
+                    format!("{}{}", base_url, img.path)
+                };
+                el.set_src(&src);
+                images.insert(img.path.clone(), el);
+            }
+        }
 
         Self {
             terminal,
@@ -51,6 +74,8 @@ impl WebApp {
             last_timestamp: 0.0,
             cols,
             rows,
+            images,
+            pending_placements: Vec::new(),
         }
     }
 
@@ -130,6 +155,7 @@ impl WebApp {
         let layout = slide.layout.clone();
 
         let mut effect = self.effect.take();
+        let mut placements = Vec::new();
 
         let completed = self
             .terminal
@@ -138,8 +164,8 @@ impl WebApp {
                 let [main_area, status_area] =
                     Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
-                // Draw slide content (ignore image placements in web)
-                let _ = render::draw_slide(&slide, scroll, frame, main_area);
+                // Draw slide content, collect image placements
+                placements = render::draw_slide(&slide, scroll, frame, main_area);
 
                 // Apply transition effect
                 if let Some(ref mut eff) = effect {
@@ -164,6 +190,26 @@ impl WebApp {
 
         self.effect = effect;
         self.prev_buffer = Some(completed.buffer.clone());
+        self.pending_placements = placements;
+
+        // Draw images on top of the cell grid (only when not in transition)
+        if self.effect.is_none() {
+            self.draw_images();
+        }
+    }
+
+    fn draw_images(&self) {
+        for placement in &self.pending_placements {
+            if let Some(img_el) = self.images.get(&placement.path) {
+                self.terminal.backend().draw_image(
+                    img_el,
+                    placement.x,
+                    placement.y,
+                    placement.width,
+                    placement.height,
+                );
+            }
+        }
     }
 
     fn create_transition(&self) -> Option<Effect> {
