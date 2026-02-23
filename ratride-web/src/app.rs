@@ -191,8 +191,18 @@ impl WebApp {
             .expect("draw");
 
         self.effect = effect;
-        self.prev_buffer = Some(completed.buffer.clone());
-        self.pending_placements = placements;
+
+        // Clear old image areas and redraw cells from current buffer
+        let old_placements = std::mem::replace(&mut self.pending_placements, placements);
+        let current_buf = completed.buffer.clone();
+        if !old_placements.is_empty() {
+            let backend = self.terminal.backend_mut();
+            for old in &old_placements {
+                backend.clear_cell_rect(old.x, old.y, old.width, old.height);
+                backend.redraw_region(&current_buf, old.x, old.y, old.width, old.height);
+            }
+        }
+        self.prev_buffer = Some(current_buf);
 
         // Draw images on top of the cell grid (only when not in transition)
         if self.effect.is_none() {
@@ -252,13 +262,7 @@ impl WebApp {
     fn draw_images(&self) {
         for placement in &self.pending_placements {
             if let Some(img_el) = self.images.get(&placement.path) {
-                self.terminal.backend().draw_image(
-                    img_el,
-                    placement.x,
-                    placement.y,
-                    placement.width,
-                    placement.height,
-                );
+                self.terminal.backend().draw_image(img_el, placement);
             }
         }
     }

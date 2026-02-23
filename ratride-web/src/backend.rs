@@ -1,6 +1,7 @@
+use ratride::render::ImagePlacement;
 use ratatui::{
     backend::{Backend, ClearType, WindowSize},
-    buffer::Cell,
+    buffer::{Buffer, Cell},
     layout::{Position, Size},
     style::{Color, Modifier},
 };
@@ -89,31 +90,92 @@ impl CanvasBackend {
         self.ctx.set_font(&font);
     }
 
-    /// Draw an image on the canvas at cell coordinates, preserving aspect ratio.
-    pub fn draw_image(&self, img: &HtmlImageElement, x: u16, y: u16, w: u16, h: u16) {
+    /// Clear a rectangular region on the canvas (cell coordinates).
+    pub fn clear_cell_rect(&self, x: u16, y: u16, w: u16, h: u16) {
+        let px = x as f64 * self.cell_width;
+        let py = y as f64 * self.cell_height;
+        let pw = w as f64 * self.cell_width;
+        let ph = h as f64 * self.cell_height;
+        self.ctx.clear_rect(px, py, pw, ph);
+    }
+
+    /// Redraw cells from a buffer for a rectangular region.
+    pub fn redraw_region(&mut self, buf: &Buffer, x: u16, y: u16, w: u16, h: u16) {
+        let cells: Vec<_> = (y..y + h)
+            .flat_map(|row| {
+                (x..x + w).filter_map(move |col| {
+                    buf.cell(Position::new(col, row)).map(|c| (col, row, c))
+                })
+            })
+            .collect();
+        let _ = <Self as Backend>::draw(self, cells.into_iter());
+    }
+
+    /// Draw an image on the canvas with optional clipping when partially off-screen.
+    pub fn draw_image(&self, img: &HtmlImageElement, placement: &ImagePlacement) {
         if !img.complete() || img.natural_width() == 0 {
             return;
         }
-        let box_px = x as f64 * self.cell_width;
-        let box_py = y as f64 * self.cell_height;
-        let box_pw = w as f64 * self.cell_width;
-        let box_ph = h as f64 * self.cell_height;
-
         let nat_w = img.natural_width() as f64;
         let nat_h = img.natural_height() as f64;
 
-        // Fit image within the box while preserving aspect ratio
-        let scale = (box_pw / nat_w).min(box_ph / nat_h);
+        let box_px = placement.x as f64 * self.cell_width;
+        let box_py = placement.y as f64 * self.cell_height;
+        let box_pw = placement.width as f64 * self.cell_width;
+        let full_ph = placement.full_height as f64 * self.cell_height;
+        let vis_ph = placement.height as f64 * self.cell_height;
+
+        // Scale to fit within the FULL box (width × full_height)
+        let scale = (box_pw / nat_w).min(full_ph / nat_h);
         let draw_w = nat_w * scale;
         let draw_h = nat_h * scale;
 
-        // Center within the box
-        let draw_x = box_px + (box_pw - draw_w) / 2.0;
-        let draw_y = box_py + (box_ph - draw_h) / 2.0;
+        if placement.full_height > placement.height {
+            // Image partially off-screen: crop via source rect
+            let center_x = (box_pw - draw_w) / 2.0;
+            let center_y = (full_ph - draw_h) / 2.0;
 
-        let _ = self
-            .ctx
-            .draw_image_with_html_image_element_and_dw_and_dh(img, draw_x, draw_y, draw_w, draw_h);
+            // Visible window within the full box
+            let vis_y0 = if placement.clip_top {
+                (placement.full_height - placement.height) as f64 * self.cell_height
+            } else {
+                0.0
+            };
+            let vis_y1 = vis_y0 + vis_ph;
+
+            // Image rect within full box
+            let img_y0 = center_y;
+            let img_y1 = center_y + draw_h;
+
+            // Intersection
+            let int_y0 = vis_y0.max(img_y0);
+            let int_y1 = vis_y1.min(img_y1);
+            if int_y1 <= int_y0 {
+                return;
+            }
+
+            // Source crop in original image pixels
+            let src_y = (int_y0 - img_y0) / draw_h * nat_h;
+            let src_h = (int_y1 - int_y0) / draw_h * nat_h;
+
+            // Destination on canvas
+            let dst_x = box_px + center_x;
+            let dst_y = box_py + (int_y0 - vis_y0);
+            let dst_w = draw_w;
+            let dst_h = int_y1 - int_y0;
+
+            let _ = self.ctx.draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                img, 0.0, src_y, nat_w, src_h, dst_x, dst_y, dst_w, dst_h,
+            );
+        } else {
+            // Normal: fit and center within the visible box
+            let center_x = box_px + (box_pw - draw_w) / 2.0;
+            let center_y = box_py + (vis_ph - draw_h) / 2.0;
+
+            let _ = self
+                .ctx
+                .draw_image_with_html_image_element_and_dw_and_dh(img, center_x, center_y, draw_w, draw_h);
+        }
     }
 
     fn color_to_css(color: Color, fallback: &str) -> String {
