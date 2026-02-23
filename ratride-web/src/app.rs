@@ -41,7 +41,6 @@ impl WebApp {
         markdown: &str,
         theme: Theme,
         frontmatter: &Frontmatter,
-        base_url: &str,
         overlay: DomOverlay,
     ) -> Self {
         let cols = backend.cols();
@@ -58,12 +57,7 @@ impl WebApp {
                     continue;
                 }
                 let el = HtmlImageElement::new().expect("create img element");
-                let src = if img.path.starts_with("http://") || img.path.starts_with("https://") {
-                    img.path.clone()
-                } else {
-                    format!("{}{}", base_url, img.path)
-                };
-                el.set_src(&src);
+                el.set_src(&img.path);
                 images.insert(img.path.clone(), el);
             }
         }

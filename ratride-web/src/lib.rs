@@ -26,14 +26,12 @@ impl RatRide {
     /// - `canvas_id`: canvas element id (defaults to "ratride")
     /// - `theme_name`: theme name (defaults to "mocha")
     /// - `font_size`: font size in px (defaults to 16)
-    /// - `base_url`: base URL for resolving relative image paths (defaults to "")
     #[wasm_bindgen]
     pub fn run(
         md: &str,
         canvas_id: Option<String>,
         theme_name: Option<String>,
         font_size: Option<f64>,
-        base_url: Option<String>,
     ) -> RatRide {
         console_error_panic_hook::set_once();
 
@@ -60,10 +58,9 @@ impl RatRide {
             .unwrap_or_default();
 
         let fs = font_size.unwrap_or(16.0);
-        let base = base_url.as_deref().unwrap_or("");
         let backend = CanvasBackend::new(canvas.clone(), fs);
-        let overlay = DomOverlay::new("ratride-overlay");
-        let mut web_app = WebApp::new(backend, body, resolved_theme, &frontmatter, base, overlay);
+        let overlay = DomOverlay::new(&format!("{id}-overlay"));
+        let mut web_app = WebApp::new(backend, body, resolved_theme, &frontmatter, overlay);
         web_app.init();
 
         let app = Rc::new(RefCell::new(web_app));

@@ -1,15 +1,31 @@
 {
-  "name": "ratride-web",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "ratride",
+  "version": "0.1.0",
+  "description": "WASM-based markdown slide presenter",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "types": "./src/index.d.ts"
+    }
+  },
+  "files": [
+    "src/index.js",
+    "src/index.d.ts",
+    "pkg/ratride_web.js",
+    "pkg/ratride_web.d.ts",
+    "pkg/ratride_web_bg.wasm",
+    "pkg/ratride_web_bg.wasm.d.ts"
+  ],
   "scripts": {
+    "build:wasm": "wasm-pack build . --target web --out-dir pkg",
     "dev": "vite"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "devDependencies": {
     "vite": "^7.3.1"
   }
