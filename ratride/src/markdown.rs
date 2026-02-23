@@ -196,8 +196,18 @@ pub fn parse_slides(input: &str, theme: &Theme, frontmatter: &Frontmatter) -> Ve
 
     let parser = Parser::new_ext(input, options);
     let mut converter = MdConverter::new(theme.clone(), frontmatter);
-    for event in parser {
-        converter.process(event);
+    for (event, range) in parser.into_offset_iter() {
+        if matches!(event, Event::Rule) {
+            if input[range].contains('-') {
+                // Only dash-based rules (`---`) act as slide separators
+                converter.process(event);
+            } else {
+                // `___` / `***` render as a visible horizontal rule
+                converter.process_horizontal_rule();
+            }
+        } else {
+            converter.process(event);
+        }
     }
     converter.finish_slides()
 }
@@ -541,7 +551,10 @@ impl MdConverter {
             Event::Start(Tag::Paragraph) => {}
             Event::End(TagEnd::Paragraph) => {
                 self.flush_line();
-                self.lines.push(Line::default());
+                // Suppress blank line between list items (loose lists wrap items in paragraphs)
+                if self.list_stack.is_empty() {
+                    self.lines.push(Line::default());
+                }
             }
 
             // --- Emphasis / Strong / Strikethrough ---
@@ -604,6 +617,9 @@ impl MdConverter {
 
             // --- Lists ---
             Event::Start(Tag::List(start)) => {
+                if !self.current_spans.is_empty() {
+                    self.flush_line();
+                }
                 let kind = match start {
                     Some(n) => ListKind::Ordered(n),
                     None => ListKind::Unordered,
@@ -636,7 +652,9 @@ impl MdConverter {
                 ));
             }
             Event::End(TagEnd::Item) => {
-                self.flush_line();
+                if !self.current_spans.is_empty() {
+                    self.flush_line();
+                }
             }
 
             // --- Blockquote ---
@@ -708,6 +726,17 @@ impl MdConverter {
 
             _ => {}
         }
+    }
+
+    fn process_horizontal_rule(&mut self) {
+        if !self.current_spans.is_empty() {
+            self.flush_line();
+        }
+        self.lines.push(Line::from(Span::styled(
+            "─".repeat(40),
+            Style::default().fg(self.theme.fg),
+        )));
+        self.lines.push(Line::default());
     }
 
     fn flush_code_block(&mut self) {
