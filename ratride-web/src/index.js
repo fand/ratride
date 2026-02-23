@@ -52,12 +52,17 @@ export async function run(md, config = {}) {
   container.appendChild(overlay);
   parent.appendChild(container);
 
-  // Sizing helper
+  // Sizing helper — guard against no-op resizes to avoid clearing the canvas
+  // (setting canvas.width resets the bitmap even if the value is unchanged)
   function resize() {
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
+    const isBody = parent === document.body;
+    const w = isBody ? window.innerWidth : parent.clientWidth;
+    const h = isBody ? window.innerHeight : parent.clientHeight;
+    const pw = Math.round(w * dpr);
+    const ph = Math.round(h * dpr);
+    if (canvas.width === pw && canvas.height === ph) return;
+    canvas.width = pw;
+    canvas.height = ph;
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
   }
