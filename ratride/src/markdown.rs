@@ -659,13 +659,13 @@ impl MdConverter {
                 self.link_url = dest_url.to_string();
                 self.link_text_buf.clear();
                 self.link_start_line = self.lines.len();
-                self.link_start_col = self.current_spans.iter().map(|s| s.content.len()).sum();
+                self.link_start_col = self.current_spans.iter().map(|s| s.width()).sum();
                 let link_color = self.theme.link;
                 self.push_style(|s| s.fg(link_color).add_modifier(Modifier::UNDERLINED));
             }
             Event::End(TagEnd::Link) => {
                 let end_col: usize =
-                    self.link_start_col + self.link_text_buf.len();
+                    self.link_start_col + Span::raw(&self.link_text_buf).width();
                 self.semantics.push(SemanticElement::Link {
                     url: std::mem::take(&mut self.link_url),
                     text: std::mem::take(&mut self.link_text_buf),

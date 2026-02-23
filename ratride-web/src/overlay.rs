@@ -1,4 +1,5 @@
 use ratride::markdown::SemanticElement;
+use ratatui::text::Text;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlElement};
 
@@ -38,6 +39,9 @@ impl DomOverlay {
         cell_width: f64,
         cell_height: f64,
         visible_rows: u16,
+        is_center: bool,
+        content: &Text<'_>,
+        content_area_width: u16,
     ) {
         self.container.set_inner_html("");
 
@@ -87,7 +91,23 @@ impl DomOverlay {
                     if y_offset < 0 || y_offset >= visible_rows as i32 {
                         continue;
                     }
-                    let px_x = content_offset_x + (*start_col as f64) * cell_width;
+
+                    // For center layout, add horizontal centering offset
+                    let center_x = if is_center {
+                        if let Some(line) = content.lines.get(*line_index) {
+                            let line_w = line.width();
+                            (content_area_width as usize).saturating_sub(line_w) as f64
+                                / 2.0
+                                * cell_width
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        0.0
+                    };
+
+                    let px_x =
+                        content_offset_x + center_x + (*start_col as f64) * cell_width;
                     let px_y = content_offset_y + (y_offset as f64) * cell_height;
                     let px_w = ((*end_col - *start_col) as f64) * cell_width;
                     let px_h = cell_height;
@@ -103,11 +123,7 @@ impl DomOverlay {
                          color:transparent;pointer-events:auto;cursor:pointer;\
                          text-decoration:none;font-size:0;display:block"
                     );
-                    let _ = a
-                        .dyn_ref::<HtmlElement>()
-                        .unwrap()
-                        .style()
-                        .set_property("cssText", &style);
+                    let _ = a.set_attribute("style", &style);
                     let _ = self.container.append_child(&a);
                 }
             }

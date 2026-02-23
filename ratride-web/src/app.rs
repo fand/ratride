@@ -1,13 +1,13 @@
 use crate::backend::CanvasBackend;
 use crate::overlay::DomOverlay;
 use ratride::color::{anim_color, blend_color, hue_to_rgb};
-use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_slides};
+use ratride::markdown::{Frontmatter, Slide, SlideLayout, TransitionKind, parse_slides};
 use ratride::render::{self, ImagePlacement};
 use ratride::theme::Theme;
 use ratatui::{
     Terminal,
     buffer::Buffer,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Flex, Layout, Margin, Rect},
 };
 use std::collections::HashMap;
 use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
@@ -222,10 +222,23 @@ impl WebApp {
         let slide = &self.slides[page];
         let cell_w = self.terminal.backend().cell_width();
         let cell_h = self.terminal.backend().cell_height();
-        // Content area offset: Margin::new(2, 1) in render.rs draw_default
+        // Content area offset: Margin::new(2, 1) in render.rs
         let content_offset_x = 2.0 * cell_w;
-        let content_offset_y = 1.0 * cell_h;
-        let visible_rows = self.rows.saturating_sub(3); // main_area minus margins
+        let mut content_offset_y = 1.0 * cell_h;
+        let visible_rows = self.rows.saturating_sub(3);
+        let content_width = self.cols.saturating_sub(4);
+
+        let is_center = matches!(slide.layout, SlideLayout::Center);
+        if is_center {
+            // Mirror the exact Layout used in render::draw_center
+            let main_area = Rect::new(0, 0, self.cols, self.rows.saturating_sub(1));
+            let content_area = main_area.inner(Margin::new(2, 1));
+            let content_height = slide.content.lines.len() as u16;
+            let [centered] = Layout::vertical([Constraint::Length(content_height)])
+                .flex(Flex::Center)
+                .areas(content_area);
+            content_offset_y = centered.y as f64 * cell_h;
+        }
 
         self.overlay.update(
             &slide.semantics,
@@ -235,6 +248,9 @@ impl WebApp {
             cell_w,
             cell_h,
             visible_rows,
+            is_center,
+            &slide.content,
+            content_width,
         );
         self.overlay.set_visible(true);
     }
