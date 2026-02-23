@@ -20,13 +20,10 @@
     "pkg/ratride_web_bg.wasm.d.ts"
   ],
   "scripts": {
-    "build:wasm": "wasm-pack build . --target web --out-dir pkg",
-    "dev": "vite"
+    "build": "wasm-pack build . --target web --out-dir pkg",
+    "prepack": "npm run build"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "vite": "^7.3.1"
-  }
+  "license": "ISC"
 }

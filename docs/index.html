@@ -10,12 +10,12 @@
 </head>
 <body>
   <script type="module">
-    import { run } from './src/index.js';
+    import { run } from 'ratride';
 
     async function main() {
       let md;
       try {
-        const resp = await fetch('./test.md');
+        const resp = await fetch('./slides.md');
         if (resp.ok) md = await resp.text();
       } catch (_) {}
 
