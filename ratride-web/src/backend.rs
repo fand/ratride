@@ -1,7 +1,7 @@
 use ratride::render::ImagePlacement;
 use ratatui::{
     backend::{Backend, ClearType, WindowSize},
-    buffer::{Buffer, Cell},
+    buffer::Cell,
     layout::{Position, Size},
     style::{Color, Modifier},
 };
@@ -88,27 +88,6 @@ impl CanvasBackend {
         let _ = self.ctx.set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
         let font = format!("{}px monospace", self.font_size);
         self.ctx.set_font(&font);
-    }
-
-    /// Clear a rectangular region on the canvas (cell coordinates).
-    pub fn clear_cell_rect(&self, x: u16, y: u16, w: u16, h: u16) {
-        let px = x as f64 * self.cell_width;
-        let py = y as f64 * self.cell_height;
-        let pw = w as f64 * self.cell_width;
-        let ph = h as f64 * self.cell_height;
-        self.ctx.clear_rect(px, py, pw, ph);
-    }
-
-    /// Redraw cells from a buffer for a rectangular region.
-    pub fn redraw_region(&mut self, buf: &Buffer, x: u16, y: u16, w: u16, h: u16) {
-        let cells: Vec<_> = (y..y + h)
-            .flat_map(|row| {
-                (x..x + w).filter_map(move |col| {
-                    buf.cell(Position::new(col, row)).map(|c| (col, row, c))
-                })
-            })
-            .collect();
-        let _ = <Self as Backend>::draw(self, cells.into_iter());
     }
 
     /// Draw an image on the canvas with optional clipping when partially off-screen.
