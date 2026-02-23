@@ -34,6 +34,7 @@ Ratride DOES NOT supported following fetures:
 - Themes & custom styling
 - Speaker notes
 - PDF / HTML export
+- Tables
 - Incremental reveal (`pause`)
 - Hot reload
 
