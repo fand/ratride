@@ -29,11 +29,18 @@ let counter = 0;
 
 /**
  * @param {string} md
- * @param {{ parent?: HTMLElement, fontSize?: number, theme?: string }} [config]
+ * @param {{ parent?: HTMLElement, fontSize?: number, theme?: string, fonts?: Record<string, string> }} [config]
  * @returns {Promise<{ destroy(): void }>}
  */
 export async function run(md, config = {}) {
   await ensureInit();
+
+  // Register user-provided figlet fonts
+  if (config.fonts) {
+    for (const [name, data] of Object.entries(config.fonts)) {
+      figlet.parseFont(name, data);
+    }
+  }
 
   const { parent = document.body, theme } = config;
   const dpr = window.devicePixelRatio || 1;
