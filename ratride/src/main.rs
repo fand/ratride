@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use clap::Parser;
@@ -73,7 +74,26 @@ struct App {
 
 impl App {
     fn new(markdown: &str, base_dir: &Path, theme: Theme, frontmatter: &Frontmatter) -> Self {
-        let mut slides = parse_slides(markdown, &theme, frontmatter);
+        let figlet_fn = |text: &str, font: Option<&str>| -> Option<String> {
+            let mut cmd = Command::new("figlet");
+            if let Some(font) = font {
+                cmd.args(["-f", font]);
+            }
+            cmd.stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .and_then(|mut child| {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        let _ = stdin.write_all(text.as_bytes());
+                    }
+                    child.wait_with_output()
+                })
+                .ok()
+                .filter(|out| out.status.success())
+                .and_then(|out| String::from_utf8(out.stdout).ok())
+        };
+        let mut slides = parse_slides(markdown, &theme, frontmatter, Some(&figlet_fn));
         let len = slides.len().max(1);
 
         // Collect image pixel dimensions for centering.

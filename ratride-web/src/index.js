@@ -1,4 +1,21 @@
+import figlet from "figlet";
+import standard from "figlet/importable-fonts/Standard.js";
+import slant from "figlet/importable-fonts/Slant.js";
+import banner from "figlet/importable-fonts/Banner.js";
 import wasmInit, { RatRide } from "../pkg/ratride_web.js";
+
+figlet.parseFont("standard", standard);
+figlet.parseFont("slant", slant);
+figlet.parseFont("banner", banner);
+
+// Expose to WASM — called from Rust via wasm_bindgen extern
+globalThis.renderFiglet = (text, font) => {
+  try {
+    return figlet.textSync(text, { font: font || "standard" });
+  } catch {
+    return null;
+  }
+};
 
 let wasmReady;
 function ensureInit() {

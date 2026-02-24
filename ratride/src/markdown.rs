@@ -2,10 +2,6 @@ use crate::theme::Theme;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::Write;
-#[cfg(not(target_arch = "wasm32"))]
-use std::process::{Command, Stdio};
 use syntect::parsing::SyntaxSet;
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
@@ -189,13 +185,21 @@ pub struct Slide {
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
 
 /// Parse markdown into slides split by `---` (horizontal rule).
-pub fn parse_slides(input: &str, theme: &Theme, frontmatter: &Frontmatter) -> Vec<Slide> {
+/// Figlet rendering callback: `(text, font_name) -> Option<ascii_art>`.
+pub type FigletFn = dyn Fn(&str, Option<&str>) -> Option<String>;
+
+pub fn parse_slides(
+    input: &str,
+    theme: &Theme,
+    frontmatter: &Frontmatter,
+    figlet_fn: Option<&FigletFn>,
+) -> Vec<Slide> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
     let parser = Parser::new_ext(input, options);
-    let mut converter = MdConverter::new(theme.clone(), frontmatter);
+    let mut converter = MdConverter::new(theme.clone(), frontmatter, figlet_fn);
     for (event, range) in parser.into_offset_iter() {
         if matches!(event, Event::Rule) {
             if input[range].contains('-') {
@@ -261,7 +265,7 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     None
 }
 
-struct MdConverter {
+struct MdConverter<'a> {
     theme: Theme,
     slides: Vec<Slide>,
     lines: Vec<Line<'static>>,
@@ -299,6 +303,8 @@ struct MdConverter {
     default_transition: Option<TransitionKind>,
     default_image_max_width: Option<f64>,
     default_figlet: Option<Option<String>>,
+    // External figlet renderer
+    figlet_fn: Option<&'a FigletFn>,
 }
 
 #[derive(Clone)]
@@ -307,8 +313,8 @@ enum ListKind {
     Ordered(u64),
 }
 
-impl MdConverter {
-    fn new(theme: Theme, frontmatter: &Frontmatter) -> Self {
+impl<'a> MdConverter<'a> {
+    fn new(theme: Theme, frontmatter: &Frontmatter, figlet_fn: Option<&'a FigletFn>) -> Self {
         let base_style = Style::default().fg(theme.fg);
         let syntect_theme = theme.syntect_theme();
         Self {
@@ -346,6 +352,7 @@ impl MdConverter {
             default_transition: frontmatter.transition.clone(),
             default_image_max_width: frontmatter.image_max_width,
             default_figlet: frontmatter.figlet.clone(),
+            figlet_fn,
         }
     }
 
@@ -799,27 +806,10 @@ impl MdConverter {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn render_figlet_heading(&mut self, text: &str, style: Style) {
         let style = style.remove_modifier(Modifier::UNDERLINED);
-        let mut cmd = Command::new("figlet");
-        if let Some(Some(font)) = &self.pending_figlet {
-            cmd.args(["-f", font]);
-        }
-        let art = cmd
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(mut stdin) = child.stdin.take() {
-                    let _ = stdin.write_all(text.as_bytes());
-                }
-                child.wait_with_output()
-            })
-            .ok()
-            .filter(|out| out.status.success())
-            .and_then(|out| String::from_utf8(out.stdout).ok());
+        let font = self.pending_figlet.as_ref().and_then(|f| f.as_deref());
+        let art = self.figlet_fn.and_then(|f| f(text, font));
 
         let Some(art) = art else {
             self.current_spans
@@ -837,14 +827,6 @@ impl MdConverter {
             self.lines
                 .push(Line::from(Span::styled(line.to_string(), style)));
         }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn render_figlet_heading(&mut self, text: &str, style: Style) {
-        let style = style.remove_modifier(Modifier::UNDERLINED);
-        self.current_spans
-            .push(Span::styled(text.to_string(), style));
-        self.flush_line();
     }
 
     fn finish_slides(mut self) -> Vec<Slide> {
@@ -924,7 +906,7 @@ mod tests {
 
     fn parse(md: &str) -> Vec<Slide> {
         let fm = Frontmatter::default();
-        parse_slides(md, &test_theme(), &fm)
+        parse_slides(md, &test_theme(), &fm, None)
     }
 
     /// Helper: collect (text, has_bg) for each line in a slide.

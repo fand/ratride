@@ -13,6 +13,13 @@ use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, KeyboardEvent};
 
 #[wasm_bindgen]
+extern "C" {
+    /// JS-side figlet renderer: `renderFiglet(text, font?) -> string | null`
+    #[wasm_bindgen(js_name = "renderFiglet", catch)]
+    fn render_figlet_js(text: &str, font: Option<String>) -> Result<JsValue, JsValue>;
+}
+
+#[wasm_bindgen]
 pub struct RatRide {
     #[allow(dead_code)]
     app: Rc<RefCell<WebApp>>,
@@ -57,10 +64,23 @@ impl RatRide {
             })
             .unwrap_or_default();
 
+        let figlet_fn = |text: &str, font: Option<&str>| -> Option<String> {
+            render_figlet_js(text, font.map(String::from))
+                .ok()
+                .and_then(|v| v.as_string())
+        };
+
         let fs = font_size.unwrap_or(16.0);
         let backend = CanvasBackend::new(canvas.clone(), fs);
         let overlay = DomOverlay::new(&format!("{id}-overlay"));
-        let mut web_app = WebApp::new(backend, body, resolved_theme, &frontmatter, overlay);
+        let mut web_app = WebApp::new(
+            backend,
+            body,
+            resolved_theme,
+            &frontmatter,
+            overlay,
+            Some(&figlet_fn),
+        );
         web_app.init();
 
         let app = Rc::new(RefCell::new(web_app));

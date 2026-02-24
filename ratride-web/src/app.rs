@@ -1,7 +1,7 @@
 use crate::backend::CanvasBackend;
 use crate::overlay::DomOverlay;
 use ratride::color::{anim_color, blend_color, hue_to_rgb};
-use ratride::markdown::{Frontmatter, Slide, SlideLayout, TransitionKind, parse_slides};
+use ratride::markdown::{FigletFn, Frontmatter, Slide, SlideLayout, TransitionKind, parse_slides};
 use ratride::render::{self, ImagePlacement};
 use ratride::theme::Theme;
 use ratatui::{
@@ -42,10 +42,11 @@ impl WebApp {
         theme: Theme,
         frontmatter: &Frontmatter,
         overlay: DomOverlay,
+        figlet_fn: Option<&FigletFn>,
     ) -> Self {
         let cols = backend.cols();
         let rows = backend.rows();
-        let slides = parse_slides(markdown, &theme, frontmatter);
+        let slides = parse_slides(markdown, &theme, frontmatter, figlet_fn);
         let len = slides.len().max(1);
         let terminal = Terminal::new(backend).expect("terminal creation");
 
