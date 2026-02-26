@@ -18,6 +18,7 @@ pub struct CanvasBackend {
     cell_height: f64,
     font_size: f64,
     dpr: f64,
+    bg_css: Option<String>,
 }
 
 impl CanvasBackend {
@@ -59,7 +60,12 @@ impl CanvasBackend {
             cell_height,
             font_size,
             dpr,
+            bg_css: None,
         }
+    }
+
+    pub fn set_bg_color(&mut self, color: Color) {
+        self.bg_css = Some(Self::color_to_css(color, "transparent"));
     }
 
     pub fn cols(&self) -> u16 {
@@ -269,9 +275,14 @@ impl Backend for CanvasBackend {
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
-        let w = self.canvas.width() as f64;
-        let h = self.canvas.height() as f64;
-        self.ctx.clear_rect(0.0, 0.0, w, h);
+        let css_w = self.canvas.width() as f64 / self.dpr;
+        let css_h = self.canvas.height() as f64 / self.dpr;
+        if let Some(ref bg) = self.bg_css {
+            self.ctx.set_fill_style_str(bg);
+            self.ctx.fill_rect(0.0, 0.0, css_w, css_h);
+        } else {
+            self.ctx.clear_rect(0.0, 0.0, css_w, css_h);
+        }
         Ok(())
     }
 

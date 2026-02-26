@@ -9,7 +9,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Flex, Layout, Margin, Rect},
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
 use web_sys::HtmlImageElement;
 
@@ -29,6 +29,7 @@ pub struct WebApp {
     cols: u16,
     rows: u16,
     images: HashMap<String, HtmlImageElement>,
+    image_dims_resolved: HashSet<String>,
     pending_placements: Vec<ImagePlacement>,
     overlay: DomOverlay,
     overlay_last_page: usize,
@@ -48,7 +49,8 @@ impl WebApp {
         let rows = backend.rows();
         let slides = parse_slides(markdown, &theme, frontmatter, figlet_fn);
         let len = slides.len().max(1);
-        let terminal = Terminal::new(backend).expect("terminal creation");
+        let mut terminal = Terminal::new(backend).expect("terminal creation");
+        terminal.backend_mut().set_bg_color(theme.bg);
 
         // Collect unique image paths and preload them
         let mut images: HashMap<String, HtmlImageElement> = HashMap::new();
@@ -75,6 +77,7 @@ impl WebApp {
             cols,
             rows,
             images,
+            image_dims_resolved: HashSet::new(),
             pending_placements: Vec::new(),
             overlay,
             overlay_last_page: usize::MAX,
@@ -142,6 +145,66 @@ impl WebApp {
         }
     }
 
+    /// Resolve image dimensions for newly loaded images.
+    /// Only adjusts placeholder height for images with max_width_percent;
+    /// images without it keep the fixed placeholder (matching terminal behavior).
+    fn resolve_image_dimensions(&mut self) {
+        let content_w = self.cols.saturating_sub(4) as f64;
+        let cell_w = self.terminal.backend().cell_width();
+        let cell_h = self.terminal.backend().cell_height();
+        for slide in &mut self.slides {
+            let mut line_delta: i32 = 0;
+            for img in &mut slide.images {
+                img.line_index = ((img.line_index as i32) + line_delta).max(0) as usize;
+                if self.image_dims_resolved.contains(&img.path) {
+                    continue;
+                }
+                let el = match self.images.get(&img.path) {
+                    Some(el) => el,
+                    None => continue,
+                };
+                if !el.complete() || el.natural_width() == 0 {
+                    continue;
+                }
+                img.pixel_width = el.natural_width();
+                img.pixel_height = el.natural_height();
+                self.image_dims_resolved.insert(img.path.clone());
+
+                let pct = match img.max_width_percent {
+                    Some(pct) => pct,
+                    None => continue,
+                };
+                let display_w = content_w * pct.clamp(0.0, 1.0);
+                let new_h = (display_w * cell_w * img.pixel_height as f64
+                    / (img.pixel_width as f64 * cell_h))
+                    .ceil() as u16;
+                let new_h = new_h.max(1);
+
+                if new_h < img.height {
+                    let to_remove = (img.height - new_h) as usize;
+                    let start = img.line_index + new_h as usize;
+                    if start + to_remove <= slide.content.lines.len() {
+                        slide.content.lines.drain(start..start + to_remove);
+                        line_delta -= to_remove as i32;
+                    }
+                    img.height = new_h;
+                } else if new_h > img.height {
+                    let to_add = (new_h - img.height) as usize;
+                    let insert_at = (img.line_index + img.height as usize)
+                        .min(slide.content.lines.len());
+                    for _ in 0..to_add {
+                        slide.content.lines.insert(
+                            insert_at,
+                            ratatui::text::Line::default(),
+                        );
+                    }
+                    line_delta += to_add as i32;
+                    img.height = new_h;
+                }
+            }
+        }
+    }
+
     pub fn tick(&mut self, timestamp: f64) {
         self.last_timestamp = timestamp;
 
@@ -149,6 +212,9 @@ impl WebApp {
         self.terminal.backend_mut().resize();
         self.cols = self.terminal.backend().cols();
         self.rows = self.terminal.backend().rows();
+
+        // Resolve image dimensions for newly loaded images
+        self.resolve_image_dimensions();
 
         // Canvas doesn't retain cell state like a terminal, so reset viewport
         // buffer every frame to force full redraw (prevents stale pixels on scroll).

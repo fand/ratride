@@ -1,50 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>ratride</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1e1e2e; width: 100vw; height: 100vh; overflow: hidden; }
-  </style>
-</head>
-<body>
-  <script type="module">
-    import { run } from 'ratride';
+    <head>
+        <meta charset="utf-8" />
+        <title>ratride</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                background: #1e1e2e;
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+    <body>
+        <script type="module">
+            import { run } from "ratride";
 
-    async function main() {
-      let md;
-      try {
-        const resp = await fetch('./slides.md');
-        if (resp.ok) md = await resp.text();
-      } catch (_) {}
+            async function main() {
+                // const md = await fetch("./figlet.md").then((r) => r.text());
+                const md = await fetch("./slides.md").then((r) => r.text());
+                run(md);
+            }
 
-      if (!md) {
-        md = `# Hello ratride-web
-
-This is a slide rendered in the browser via WASM + Canvas.
-
----
-
-## Slide 2
-
-- Keyboard navigation: arrow keys
-- Transitions work too!
-
----
-
-<!-- transition: fade -->
-
-## Fade transition
-
-This slide fades in.
-`;
-      }
-
-      run(md);
-    }
-
-    main();
-  </script>
-</body>
+            main();
+        </script>
+    </body>
 </html>
