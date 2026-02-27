@@ -11,7 +11,14 @@
       "Bash(echo:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(git -C /Users/amagi/src/github.com/fand/ratride show feat/web-original:ratride-web/Cargo.toml)",
+      "Bash(git -C /Users/amagi/src/github.com/fand/ratride show 90675b5:ratride-web/Cargo.toml)",
+      "Bash(git -C /Users/amagi/src/github.com/fand/ratride show 90675b5:ratride-web/src/lib.rs)",
+      "Bash(git -C /Users/amagi/src/github.com/fand/ratride log --all --oneline --graph)",
+      "Bash(git -C /Users/amagi/src/github.com/fand/ratride show:*)",
+      "Bash(git -C /Users/amagi/src/github.com/fand/ratride log feat/web-original..main --oneline)",
+      "WebFetch(domain:ratatui.rs)"
     ]
   }
 }

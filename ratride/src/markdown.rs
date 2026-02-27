@@ -2,8 +2,6 @@ use crate::theme::Theme;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use std::io::Write;
-use std::process::{Command, Stdio};
 use syntect::parsing::SyntaxSet;
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
@@ -138,6 +136,23 @@ pub enum TransitionKind {
     SlideRgb,
 }
 
+/// Semantic element for a11y overlay in web builds.
+#[derive(Clone, Debug)]
+pub enum SemanticElement {
+    Heading {
+        level: u8,
+        text: String,
+        line_index: usize,
+    },
+    Link {
+        url: String,
+        text: String,
+        line_index: usize,
+        start_col: usize,
+        end_col: usize,
+    },
+}
+
 /// Image reference found in a slide.
 #[derive(Clone, Debug)]
 pub struct SlideImage {
@@ -163,20 +178,42 @@ pub struct Slide {
     pub images: Vec<SlideImage>,
     /// Transition effect for entering this slide.
     pub transition: TransitionKind,
+    /// Semantic elements for a11y overlay (headings, links).
+    pub semantics: Vec<SemanticElement>,
+    /// Per-slide theme (defaults to the presentation theme).
+    pub theme: Theme,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
 
 /// Parse markdown into slides split by `---` (horizontal rule).
-pub fn parse_slides(input: &str, theme: &Theme, frontmatter: &Frontmatter) -> Vec<Slide> {
+/// Figlet rendering callback: `(text, font_name) -> Option<ascii_art>`.
+pub type FigletFn = dyn Fn(&str, Option<&str>) -> Option<String>;
+
+pub fn parse_slides(
+    input: &str,
+    theme: &Theme,
+    frontmatter: &Frontmatter,
+    figlet_fn: Option<&FigletFn>,
+) -> Vec<Slide> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
     let parser = Parser::new_ext(input, options);
-    let mut converter = MdConverter::new(theme.clone(), frontmatter);
-    for event in parser {
-        converter.process(event);
+    let mut converter = MdConverter::new(theme.clone(), frontmatter, figlet_fn);
+    for (event, range) in parser.into_offset_iter() {
+        if matches!(event, Event::Rule) {
+            if input[range].contains('-') {
+                // Only dash-based rules (`---`) act as slide separators
+                converter.process(event);
+            } else {
+                // `___` / `***` render as a visible horizontal rule
+                converter.process_horizontal_rule();
+            }
+        } else {
+            converter.process(event);
+        }
     }
     converter.finish_slides()
 }
@@ -186,6 +223,7 @@ enum CommentDirective {
     Transition(TransitionKind),
     Figlet(Option<String>),
     ImageMaxWidth(f64),
+    Theme(Theme),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -227,10 +265,15 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
             return Some(CommentDirective::ImageMaxWidth(pct / 100.0));
         }
     }
+    if let Some(value) = inner.strip_prefix("theme:") {
+        if let Some(t) = crate::theme::theme_from_name(value.trim()) {
+            return Some(CommentDirective::Theme(t));
+        }
+    }
     None
 }
 
-struct MdConverter {
+struct MdConverter<'a> {
     theme: Theme,
     slides: Vec<Slide>,
     lines: Vec<Line<'static>>,
@@ -247,6 +290,17 @@ struct MdConverter {
     heading_text_buf: String,
     images: Vec<SlideImage>,
     pending_image_max_width: Option<f64>,
+    // Semantic elements for a11y
+    semantics: Vec<SemanticElement>,
+    semantic_heading_level: u8,
+    semantic_heading_buf: String,
+    semantic_heading_line: usize,
+    in_semantic_heading: bool,
+    in_link: bool,
+    link_url: String,
+    link_text_buf: String,
+    link_start_line: usize,
+    link_start_col: usize,
     // Syntax highlighting
     code_block_lang: Option<String>,
     code_block_buf: String,
@@ -257,6 +311,10 @@ struct MdConverter {
     default_transition: Option<TransitionKind>,
     default_image_max_width: Option<f64>,
     default_figlet: Option<Option<String>>,
+    // External figlet renderer
+    figlet_fn: Option<&'a FigletFn>,
+    // Default theme for resetting after each slide
+    default_theme: Theme,
 }
 
 #[derive(Clone)]
@@ -265,10 +323,11 @@ enum ListKind {
     Ordered(u64),
 }
 
-impl MdConverter {
-    fn new(theme: Theme, frontmatter: &Frontmatter) -> Self {
+impl<'a> MdConverter<'a> {
+    fn new(theme: Theme, frontmatter: &Frontmatter, figlet_fn: Option<&'a FigletFn>) -> Self {
         let base_style = Style::default().fg(theme.fg);
         let syntect_theme = theme.syntect_theme();
+        let default_theme = theme.clone();
         Self {
             theme,
             slides: Vec::new(),
@@ -286,6 +345,16 @@ impl MdConverter {
             heading_text_buf: String::new(),
             images: Vec::new(),
             pending_image_max_width: None,
+            semantics: Vec::new(),
+            semantic_heading_level: 0,
+            semantic_heading_buf: String::new(),
+            semantic_heading_line: 0,
+            in_semantic_heading: false,
+            in_link: false,
+            link_url: String::new(),
+            link_text_buf: String::new(),
+            link_start_line: 0,
+            link_start_col: 0,
             code_block_lang: None,
             code_block_buf: String::new(),
             syntax_set: SyntaxSet::load_defaults_newlines(),
@@ -294,6 +363,8 @@ impl MdConverter {
             default_transition: frontmatter.transition.clone(),
             default_image_max_width: frontmatter.image_max_width,
             default_figlet: frontmatter.figlet.clone(),
+            figlet_fn,
+            default_theme,
         }
     }
 
@@ -356,6 +427,7 @@ impl MdConverter {
                 .take()
                 .or_else(|| self.default_layout.clone())
                 .unwrap_or_default();
+            let semantics = std::mem::take(&mut self.semantics);
             let mut slide = match layout {
                 SlideLayout::TwoColumn => split_two_column(lines),
                 _ => Slide {
@@ -364,12 +436,20 @@ impl MdConverter {
                     right_content: None,
                     images: Vec::new(),
                     transition: TransitionKind::default(),
+                    semantics: Vec::new(),
+                    theme: Theme::default(),
                 },
             };
             slide.images = images;
             slide.transition = transition;
+            slide.semantics = semantics;
+            slide.theme = self.theme.clone();
             self.slides.push(slide);
         }
+        // Reset theme to default for next slide
+        self.syntect_theme = self.default_theme.syntect_theme();
+        self.style_stack[0] = Style::default().fg(self.default_theme.fg);
+        self.theme = self.default_theme.clone();
     }
 
     fn list_indent(&self) -> String {
@@ -419,6 +499,11 @@ impl MdConverter {
                 Some(CommentDirective::ImageMaxWidth(pct)) => {
                     self.pending_image_max_width = Some(pct);
                 }
+                Some(CommentDirective::Theme(t)) => {
+                    self.syntect_theme = t.syntect_theme();
+                    self.style_stack[0] = Style::default().fg(t.fg);
+                    self.theme = t;
+                }
                 None => {}
             },
 
@@ -439,6 +524,18 @@ impl MdConverter {
                         .add_modifier(Modifier::BOLD),
                 };
                 self.push_style(|_| style);
+                // Track heading for semantic overlay
+                self.in_semantic_heading = true;
+                self.semantic_heading_buf.clear();
+                self.semantic_heading_level = match level {
+                    HeadingLevel::H1 => 1,
+                    HeadingLevel::H2 => 2,
+                    HeadingLevel::H3 => 3,
+                    HeadingLevel::H4 => 4,
+                    HeadingLevel::H5 => 5,
+                    HeadingLevel::H6 => 6,
+                };
+                self.semantic_heading_line = self.lines.len();
                 let use_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
                 if use_figlet {
                     // Apply default figlet if no per-slide directive
@@ -458,6 +555,15 @@ impl MdConverter {
                 }
             }
             Event::End(TagEnd::Heading(_)) => {
+                // Emit semantic heading
+                if self.in_semantic_heading {
+                    self.in_semantic_heading = false;
+                    self.semantics.push(SemanticElement::Heading {
+                        level: self.semantic_heading_level,
+                        text: self.semantic_heading_buf.clone(),
+                        line_index: self.semantic_heading_line,
+                    });
+                }
                 if self.in_heading {
                     self.in_heading = false;
                     let style = self.current_style();
@@ -475,7 +581,10 @@ impl MdConverter {
             Event::Start(Tag::Paragraph) => {}
             Event::End(TagEnd::Paragraph) => {
                 self.flush_line();
-                self.lines.push(Line::default());
+                // Suppress blank line between list items (loose lists wrap items in paragraphs)
+                if self.list_stack.is_empty() {
+                    self.lines.push(Line::default());
+                }
             }
 
             // --- Emphasis / Strong / Strikethrough ---
@@ -538,6 +647,9 @@ impl MdConverter {
 
             // --- Lists ---
             Event::Start(Tag::List(start)) => {
+                if !self.current_spans.is_empty() {
+                    self.flush_line();
+                }
                 let kind = match start {
                     Some(n) => ListKind::Ordered(n),
                     None => ListKind::Unordered,
@@ -570,7 +682,9 @@ impl MdConverter {
                 ));
             }
             Event::End(TagEnd::Item) => {
-                self.flush_line();
+                if !self.current_spans.is_empty() {
+                    self.flush_line();
+                }
             }
 
             // --- Blockquote ---
@@ -587,8 +701,40 @@ impl MdConverter {
                 self.flush_slide();
             }
 
+            // --- Links ---
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                self.in_link = true;
+                self.link_url = dest_url.to_string();
+                self.link_text_buf.clear();
+                self.link_start_line = self.lines.len();
+                self.link_start_col = self.current_spans.iter().map(|s| s.width()).sum();
+                let link_color = self.theme.link;
+                self.push_style(|s| s.fg(link_color).add_modifier(Modifier::UNDERLINED));
+            }
+            Event::End(TagEnd::Link) => {
+                let end_col: usize =
+                    self.link_start_col + Span::raw(&self.link_text_buf).width();
+                self.semantics.push(SemanticElement::Link {
+                    url: std::mem::take(&mut self.link_url),
+                    text: std::mem::take(&mut self.link_text_buf),
+                    line_index: self.link_start_line,
+                    start_col: self.link_start_col,
+                    end_col,
+                });
+                self.in_link = false;
+                self.pop_style();
+            }
+
             // --- Text ---
             Event::Text(text) => {
+                // Accumulate into semantic buffers
+                if self.in_semantic_heading {
+                    self.semantic_heading_buf.push_str(&text);
+                }
+                if self.in_link {
+                    self.link_text_buf.push_str(&text);
+                }
+
                 if self.in_heading {
                     self.heading_text_buf.push_str(&text);
                 } else if self.in_image {
@@ -610,6 +756,17 @@ impl MdConverter {
 
             _ => {}
         }
+    }
+
+    fn process_horizontal_rule(&mut self) {
+        if !self.current_spans.is_empty() {
+            self.flush_line();
+        }
+        self.lines.push(Line::from(Span::styled(
+            "─".repeat(40),
+            Style::default().fg(self.theme.fg),
+        )));
+        self.lines.push(Line::default());
     }
 
     fn flush_code_block(&mut self) {
@@ -674,24 +831,8 @@ impl MdConverter {
 
     fn render_figlet_heading(&mut self, text: &str, style: Style) {
         let style = style.remove_modifier(Modifier::UNDERLINED);
-        let mut cmd = Command::new("figlet");
-        if let Some(Some(font)) = &self.pending_figlet {
-            cmd.args(["-f", font]);
-        }
-        let art = cmd
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(mut stdin) = child.stdin.take() {
-                    let _ = stdin.write_all(text.as_bytes());
-                }
-                child.wait_with_output()
-            })
-            .ok()
-            .filter(|out| out.status.success())
-            .and_then(|out| String::from_utf8(out.stdout).ok());
+        let font = self.pending_figlet.as_ref().and_then(|f| f.as_deref());
+        let art = self.figlet_fn.and_then(|f| f(text, font));
 
         let Some(art) = art else {
             self.current_spans
@@ -730,6 +871,8 @@ impl MdConverter {
                 right_content: None,
                 images: std::mem::take(&mut self.images),
                 transition,
+                semantics: std::mem::take(&mut self.semantics),
+                theme: self.theme.clone(),
             });
         }
         self.slides
@@ -764,6 +907,8 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 right_content: Some(Text::from(right)),
                 images: Vec::new(),
                 transition: TransitionKind::default(),
+                semantics: Vec::new(),
+                theme: Theme::default(),
             }
         }
         None => Slide {
@@ -772,6 +917,8 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             right_content: None,
             images: Vec::new(),
             transition: TransitionKind::default(),
+            semantics: Vec::new(),
+            theme: Theme::default(),
         },
     }
 }
@@ -785,7 +932,7 @@ mod tests {
 
     fn parse(md: &str) -> Vec<Slide> {
         let fm = Frontmatter::default();
-        parse_slides(md, &test_theme(), &fm)
+        parse_slides(md, &test_theme(), &fm, None)
     }
 
     /// Helper: collect (text, has_bg) for each line in a slide.
