@@ -33,6 +33,9 @@ jobs:
       - name: Build WASM
         run: cd ratride-web && wasm-pack build . --target web --out-dir pkg
 
+      - name: Install ratride-web deps
+        run: cd ratride-web && npm install
+
       - name: Install docs deps
         run: cd docs && npm install
 
