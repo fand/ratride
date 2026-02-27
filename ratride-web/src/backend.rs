@@ -9,6 +9,9 @@ use std::io;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
 
+/// Extra padding (px) added to each cell's background fill to eliminate sub-pixel gaps.
+const BG_PAD: f64 = 0.5;
+
 pub struct CanvasBackend {
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
@@ -211,7 +214,8 @@ impl Backend for CanvasBackend {
             let bg_css = Self::color_to_css(cell.bg, "transparent");
             if bg_css != "transparent" {
                 self.ctx.set_fill_style_str(&bg_css);
-                self.ctx.fill_rect(px, py, cw, ch);
+                // Slightly oversize to eliminate sub-pixel gaps between cells
+                self.ctx.fill_rect(px - BG_PAD, py - BG_PAD, cw + BG_PAD * 2.0, ch + BG_PAD * 2.0);
             } else {
                 self.ctx.clear_rect(px, py, cw, ch);
             }
