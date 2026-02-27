@@ -1,6 +1,6 @@
 <!-- layout: center -->
 <!-- figlet -->
-<!-- image_max_width: 80% -->
+<!-- image_max_width: 40% -->
 
 ![](./ratride_logo_white.png)
 

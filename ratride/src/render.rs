@@ -1,10 +1,10 @@
 use crate::markdown::{Slide, SlideLayout};
 use crate::theme::Theme;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
     text::Text,
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
-    Frame,
 };
 
 /// Position where an image should be rendered.
@@ -60,7 +60,17 @@ pub fn draw_default(
 
     let mut placements = Vec::new();
     for img in &slide.images {
-        if let Some(p) = compute_image_placement(content_area, img.line_index, img.height, scroll, &img.path, false, 0, 0, img.max_width_percent) {
+        if let Some(p) = compute_image_placement(
+            content_area,
+            img.line_index,
+            img.height,
+            scroll,
+            &img.path,
+            false,
+            0,
+            0,
+            img.max_width_percent,
+        ) {
             placements.push(p);
         }
     }
@@ -90,7 +100,17 @@ pub fn draw_center(
 
     let mut placements = Vec::new();
     for img in &slide.images {
-        if let Some(p) = compute_image_placement(centered_area, img.line_index, img.height, scroll, &img.path, true, img.pixel_width, img.pixel_height, img.max_width_percent) {
+        if let Some(p) = compute_image_placement(
+            centered_area,
+            img.line_index,
+            img.height,
+            scroll,
+            &img.path,
+            true,
+            img.pixel_width,
+            img.pixel_height,
+            img.max_width_percent,
+        ) {
             placements.push(p);
         }
     }
