@@ -43,13 +43,16 @@ impl CanvasBackend {
         ctx.set_font(&font);
         let metrics = ctx.measure_text("W").unwrap();
         let cell_width = metrics.width();
-        let cell_height = scaled_font_size * 1.2;
 
         // Canvas size is in physical pixels; grid is in CSS pixels
         let css_w = canvas.width() as f64 / dpr;
         let css_h = canvas.height() as f64 / dpr;
         let cols = (css_w / cell_width) as u16;
-        let rows = (css_h / cell_height) as u16;
+        // Snap cell_height so rows * cell_height == css_h exactly,
+        // ensuring the status bar sits flush at the canvas bottom.
+        let nominal_cell_height = scaled_font_size * 1.2;
+        let rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
+        let cell_height = css_h / rows as f64;
 
         Self {
             canvas,
@@ -88,7 +91,9 @@ impl CanvasBackend {
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;
         self.cols = (css_w / self.cell_width) as u16;
-        self.rows = (css_h / self.cell_height) as u16;
+        let nominal_cell_height = self.font_size * 1.2;
+        self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
+        self.cell_height = css_h / self.rows as f64;
 
         // Re-apply DPR scale + font (setTransform is absolute, won't compound)
         let _ = self.ctx.set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
