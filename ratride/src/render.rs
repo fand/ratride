@@ -168,22 +168,40 @@ pub fn draw_status_bar(
     );
 }
 
+/// Compute how many screen rows a line occupies when word-wrapped to `width` columns.
+fn wrapped_line_height(line: &ratatui::text::Line<'_>, width: u16) -> u16 {
+    if width == 0 {
+        return 1;
+    }
+    let w = width as usize;
+    let total_width = line.width();
+    ((total_width + w - 1) / w).max(1) as u16
+}
+
 /// Pre-fill buffer rows with Line::style background for full-width code block bg.
+/// Accounts for line wrapping so backgrounds align with Paragraph's wrapped output.
 fn fill_line_backgrounds(content: &Text<'_>, scroll: u16, frame: &mut Frame, area: Rect) {
     let buf = frame.buffer_mut();
-    for (i, line) in content.lines.iter().enumerate() {
-        let y_offset = i as i32 - scroll as i32;
-        if y_offset < 0 || y_offset >= area.height as i32 {
-            continue;
-        }
+    let mut y_row: i32 = -(scroll as i32);
+
+    for line in content.lines.iter() {
+        let wrapped_rows = wrapped_line_height(line, area.width) as i32;
+
         if let Some(bg) = line.style.bg {
-            let y = area.y + y_offset as u16;
-            for x in area.x..area.x + area.width {
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    cell.set_bg(bg);
+            for dy in 0..wrapped_rows {
+                let y_offset = y_row + dy;
+                if y_offset >= 0 && y_offset < area.height as i32 {
+                    let y = area.y + y_offset as u16;
+                    for x in area.x..area.x + area.width {
+                        if let Some(cell) = buf.cell_mut((x, y)) {
+                            cell.set_bg(bg);
+                        }
+                    }
                 }
             }
         }
+
+        y_row += wrapped_rows;
     }
 }
 
