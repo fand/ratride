@@ -60,7 +60,6 @@ struct App {
     scroll_offsets: Vec<u16>,
     quit: bool,
     image_backend: ImageBackend,
-    theme: Theme,
     /// Active transition effect.
     effect: Option<Effect>,
     last_frame: Instant,
@@ -191,7 +190,6 @@ impl App {
             scroll_offsets: vec![0; len],
             quit: false,
             image_backend,
-            theme,
             effect: None,
             last_frame: Instant::now(),
             pending_images: Vec::new(),
@@ -246,7 +244,7 @@ impl App {
 
     fn create_transition(&self) -> Option<Effect> {
         let slide = &self.slides[self.current_page];
-        let bg = self.theme.bg;
+        let bg = slide.theme.bg;
         let prev_buf = self.prev_buffer.clone();
         Some(match slide.transition {
             TransitionKind::None => return None,
@@ -568,6 +566,7 @@ impl App {
 
         let slide = &self.slides[self.current_page];
         let layout = slide.layout.clone();
+        let slide_theme = slide.theme.clone();
         let scroll = self.scroll_offset();
 
         // Draw slide content via core render functions
@@ -595,7 +594,7 @@ impl App {
             self.total_pages(),
             frame,
             status_area,
-            &self.theme,
+            &slide_theme,
         );
     }
 

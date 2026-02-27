@@ -59,6 +59,63 @@ ___
 Try: `ratride slides.md --theme latte`
 
 ---
+<!-- theme: macchiato -->
+<!-- transition: fade -->
+
+## Macchiato
+
+This slide uses **Catppuccin Macchiato** theme via `<!-- theme: macchiato -->`.
+
+- `inline code` and **bold**
+- *italic* and ~~strikethrough~~
+
+> Blockquote in macchiato colors.
+
+```rust
+fn main() {
+    println!("macchiato!");
+}
+```
+
+---
+<!-- theme: frappe -->
+<!-- transition: fade -->
+
+## Frappé
+
+This slide uses **Catppuccin Frappé** theme via `<!-- theme: frappe -->`.
+
+- `inline code` and **bold**
+- *italic* and ~~strikethrough~~
+
+> Blockquote in frappé colors.
+
+```rust
+fn main() {
+    println!("frappé!");
+}
+```
+
+---
+<!-- theme: latte -->
+<!-- transition: fade -->
+
+## Latte
+
+This slide uses **Catppuccin Latte** theme via `<!-- theme: latte -->`.
+
+- `inline code` and **bold**
+- *italic* and ~~strikethrough~~
+
+> Blockquote in latte colors.
+
+```rust
+fn main() {
+    println!("latte!");
+}
+```
+
+---
 
 ## Image support
 

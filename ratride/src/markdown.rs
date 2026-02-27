@@ -180,6 +180,8 @@ pub struct Slide {
     pub transition: TransitionKind,
     /// Semantic elements for a11y overlay (headings, links).
     pub semantics: Vec<SemanticElement>,
+    /// Per-slide theme (defaults to the presentation theme).
+    pub theme: Theme,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -221,6 +223,7 @@ enum CommentDirective {
     Transition(TransitionKind),
     Figlet(Option<String>),
     ImageMaxWidth(f64),
+    Theme(Theme),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -260,6 +263,11 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
         let value = value.trim().trim_end_matches('%');
         if let Ok(pct) = value.parse::<f64>() {
             return Some(CommentDirective::ImageMaxWidth(pct / 100.0));
+        }
+    }
+    if let Some(value) = inner.strip_prefix("theme:") {
+        if let Some(t) = crate::theme::theme_from_name(value.trim()) {
+            return Some(CommentDirective::Theme(t));
         }
     }
     None
@@ -305,6 +313,8 @@ struct MdConverter<'a> {
     default_figlet: Option<Option<String>>,
     // External figlet renderer
     figlet_fn: Option<&'a FigletFn>,
+    // Default theme for resetting after each slide
+    default_theme: Theme,
 }
 
 #[derive(Clone)]
@@ -317,6 +327,7 @@ impl<'a> MdConverter<'a> {
     fn new(theme: Theme, frontmatter: &Frontmatter, figlet_fn: Option<&'a FigletFn>) -> Self {
         let base_style = Style::default().fg(theme.fg);
         let syntect_theme = theme.syntect_theme();
+        let default_theme = theme.clone();
         Self {
             theme,
             slides: Vec::new(),
@@ -353,6 +364,7 @@ impl<'a> MdConverter<'a> {
             default_image_max_width: frontmatter.image_max_width,
             default_figlet: frontmatter.figlet.clone(),
             figlet_fn,
+            default_theme,
         }
     }
 
@@ -425,13 +437,19 @@ impl<'a> MdConverter<'a> {
                     images: Vec::new(),
                     transition: TransitionKind::default(),
                     semantics: Vec::new(),
+                    theme: Theme::default(),
                 },
             };
             slide.images = images;
             slide.transition = transition;
             slide.semantics = semantics;
+            slide.theme = self.theme.clone();
             self.slides.push(slide);
         }
+        // Reset theme to default for next slide
+        self.syntect_theme = self.default_theme.syntect_theme();
+        self.style_stack[0] = Style::default().fg(self.default_theme.fg);
+        self.theme = self.default_theme.clone();
     }
 
     fn list_indent(&self) -> String {
@@ -480,6 +498,11 @@ impl<'a> MdConverter<'a> {
                 }
                 Some(CommentDirective::ImageMaxWidth(pct)) => {
                     self.pending_image_max_width = Some(pct);
+                }
+                Some(CommentDirective::Theme(t)) => {
+                    self.syntect_theme = t.syntect_theme();
+                    self.style_stack[0] = Style::default().fg(t.fg);
+                    self.theme = t;
                 }
                 None => {}
             },
@@ -849,6 +872,7 @@ impl<'a> MdConverter<'a> {
                 images: std::mem::take(&mut self.images),
                 transition,
                 semantics: std::mem::take(&mut self.semantics),
+                theme: self.theme.clone(),
             });
         }
         self.slides
@@ -884,6 +908,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 images: Vec::new(),
                 transition: TransitionKind::default(),
                 semantics: Vec::new(),
+                theme: Theme::default(),
             }
         }
         None => Slide {
@@ -893,6 +918,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             images: Vec::new(),
             transition: TransitionKind::default(),
             semantics: Vec::new(),
+            theme: Theme::default(),
         },
     }
 }
