@@ -17,10 +17,12 @@ globalThis.renderFiglet = (text, font) => {
   }
 };
 
+const wasmUrl = new URL("../pkg/ratride_web_bg.wasm", import.meta.url);
+
 let wasmReady;
 function ensureInit() {
   if (!wasmReady) {
-    wasmReady = wasmInit();
+    wasmReady = wasmInit({ module_or_path: wasmUrl });
   }
   return wasmReady;
 }
