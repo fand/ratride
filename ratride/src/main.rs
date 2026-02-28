@@ -682,10 +682,28 @@ struct Cli {
     /// Export slides as a static HTML directory to the given path
     #[arg(long, value_name = "DIR")]
     export: Option<String>,
+
+    /// Start dev server with live reload
+    #[arg(long)]
+    serve: bool,
+
+    /// Port for dev server
+    #[arg(long, default_value_t = 3000)]
+    port: u16,
 }
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
+
+    if cli.serve {
+        let out_dir = cli.export.clone().unwrap_or_else(|| {
+            std::env::temp_dir()
+                .join("ratride-serve")
+                .to_string_lossy()
+                .to_string()
+        });
+        return ratride::serve::serve(&cli.file, &out_dir, cli.theme.as_deref(), cli.port);
+    }
 
     if let Some(out_dir) = &cli.export {
         return ratride::export::export(&cli.file, out_dir, cli.theme.as_deref());
