@@ -2,9 +2,13 @@
 build-wasm:
     cd ratride-web && npm run build
 
-# Serve demo site with live reload
-web: build-wasm
-    cd docs && npm install && npx vite
+# Serve docs site with live reload
+web:
+    cargo run -- docs/public/slides.md --serve
+
+# Build docs for deployment
+build-docs:
+    cargo run -- docs/public/slides.md --export docs/dist
 
 # Pack npm package (dry-run)
 pack:
