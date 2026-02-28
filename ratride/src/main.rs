@@ -678,10 +678,18 @@ struct Cli {
     /// Theme name [mocha (default), macchiato, frappe, latte]
     #[arg(long, value_name = "NAME")]
     theme: Option<String>,
+
+    /// Export slides as a static HTML directory to the given path
+    #[arg(long, value_name = "DIR")]
+    export: Option<String>,
 }
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
+
+    if let Some(out_dir) = &cli.export {
+        return ratride::export::export(&cli.file, out_dir, cli.theme.as_deref());
+    }
 
     let path = &cli.file;
     let base_dir = Path::new(path).parent().unwrap_or(Path::new("."));
