@@ -2,7 +2,7 @@
 name = "ratride"
 version = "0.5.0"
 edition = "2024"
-description = "A tiny terminal-based Markdown slide presenter built with ratatui"
+description = "Markdown slide presenter for TUI & Web"
 license = "MIT"
 repository = "https://github.com/fand/ratride"
 readme = "../README.md"
@@ -22,7 +22,7 @@ required-features = ["terminal"]
 
 [features]
 default = ["terminal"]
-terminal = ["dep:crossterm", "dep:ratatui-image", "dep:image", "dep:clap", "dep:base64"]
+terminal = ["dep:crossterm", "dep:ratatui-image", "dep:image", "dep:clap", "dep:base64", "dep:tiny_http", "dep:notify"]
 
 [dependencies]
 ratatui = { version = "0.30", default-features = false }
@@ -34,3 +34,5 @@ tachyonfx = "0.23"
 base64 = { version = "0.22", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 syntect = { version = "5", default-features = false, features = ["default-themes", "default-syntaxes", "regex-fancy", "plist-load"] }
+tiny_http = { version = "0.12", optional = true }
+notify = { version = "8", optional = true }

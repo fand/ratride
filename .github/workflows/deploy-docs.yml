@@ -20,33 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: jetli/wasm-pack-action@v0.4.0
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Build WASM
-        run: cd ratride-web && wasm-pack build . --target web --out-dir pkg
-
-      - name: Install ratride-web deps
-        run: cd ratride-web && npm install
-
-      - name: Install docs deps
-        run: cd docs && npm install
+      - uses: Swatinem/rust-cache@v2
 
       - name: Build docs
-        run: cd docs && npx vite build --base /ratride/
+        run: cargo run -- docs/slides.md --export dist
 
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
-          path: docs/dist
+          path: dist
 
   deploy:
     if: github.ref == 'refs/heads/main'

@@ -2,4 +2,6 @@ pub mod color;
 pub mod export;
 pub mod markdown;
 pub mod render;
+#[cfg(feature = "terminal")]
+pub mod serve;
 pub mod theme;
