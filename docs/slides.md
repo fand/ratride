@@ -1,3 +1,6 @@
+---
+figlet_mobile: false
+---
 <!-- layout: center -->
 <!-- figlet -->
 <!-- image_max_width: 40% -->
