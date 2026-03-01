@@ -18,6 +18,7 @@ web-sys = { version = "0.3", features = [
     "HtmlImageElement",
     "Element", "HtmlElement", "HtmlAnchorElement", "Node",
     "CssStyleDeclaration",
+    "MediaQueryList",
 ] }
 js-sys = "0.3"
 console_error_panic_hook = "0.1"

@@ -18,6 +18,8 @@ pub struct Frontmatter {
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
     pub bg_fill: Option<bool>,
+    /// Whether to enable figlet on mobile. Default: false (disabled on mobile).
+    pub figlet_mobile: Option<bool>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -116,6 +118,9 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 "bg_fill" => {
                     fm.bg_fill = Some(value == "true");
                 }
+                "figlet_mobile" => {
+                    fm.figlet_mobile = Some(value == "true");
+                }
                 _ => {}
             }
         }
@@ -210,13 +215,14 @@ pub fn parse_slides(
     theme: &Theme,
     frontmatter: &Frontmatter,
     figlet_fn: Option<&FigletFn>,
+    is_mobile: bool,
 ) -> Vec<Slide> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
     let parser = Parser::new_ext(input, options);
-    let mut converter = MdConverter::new(theme.clone(), frontmatter, figlet_fn);
+    let mut converter = MdConverter::new(theme.clone(), frontmatter, figlet_fn, is_mobile);
     for (event, range) in parser.into_offset_iter() {
         if matches!(event, Event::Rule) {
             if input[range].contains('-') {
@@ -237,6 +243,7 @@ enum CommentDirective {
     Layout(SlideLayout),
     Transition(TransitionKind),
     Figlet(Option<String>),
+    FigletMobile(bool),
     ImageMaxWidth(f64),
     LineHeight(f64),
     Theme(Theme),
@@ -275,6 +282,9 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     }
     if let Some(font) = inner.strip_prefix("figlet:") {
         return Some(CommentDirective::Figlet(Some(font.trim().to_string())));
+    }
+    if let Some(value) = inner.strip_prefix("figlet_mobile:") {
+        return Some(CommentDirective::FigletMobile(value.trim() == "true"));
     }
     if let Some(value) = inner.strip_prefix("image_max_width:") {
         let value = value.trim().trim_end_matches('%');
@@ -347,6 +357,10 @@ struct MdConverter<'a> {
     figlet_fn: Option<&'a FigletFn>,
     // Default theme for resetting after each slide
     default_theme: Theme,
+    // Mobile detection
+    is_mobile: bool,
+    default_figlet_mobile: bool,
+    pending_figlet_mobile: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -356,7 +370,7 @@ enum ListKind {
 }
 
 impl<'a> MdConverter<'a> {
-    fn new(theme: Theme, frontmatter: &Frontmatter, figlet_fn: Option<&'a FigletFn>) -> Self {
+    fn new(theme: Theme, frontmatter: &Frontmatter, figlet_fn: Option<&'a FigletFn>, is_mobile: bool) -> Self {
         let base_style = Style::default().fg(theme.fg);
         let syntect_theme = theme.syntect_theme();
         let default_theme = theme.clone();
@@ -401,6 +415,9 @@ impl<'a> MdConverter<'a> {
             pending_bg_fill: None,
             figlet_fn,
             default_theme,
+            is_mobile,
+            default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(false),
+            pending_figlet_mobile: None,
         }
     }
 
@@ -451,6 +468,7 @@ impl<'a> MdConverter<'a> {
         let lines = std::mem::take(&mut self.lines);
         let images = std::mem::take(&mut self.images);
         self.pending_figlet = None;
+        self.pending_figlet_mobile = None;
         let transition = self
             .pending_transition
             .take()
@@ -543,6 +561,9 @@ impl<'a> MdConverter<'a> {
                 Some(CommentDirective::Figlet(font)) => {
                     self.pending_figlet = Some(font);
                 }
+                Some(CommentDirective::FigletMobile(enabled)) => {
+                    self.pending_figlet_mobile = Some(enabled);
+                }
                 Some(CommentDirective::ImageMaxWidth(pct)) => {
                     self.pending_image_max_width = Some(pct);
                 }
@@ -589,7 +610,9 @@ impl<'a> MdConverter<'a> {
                     HeadingLevel::H6 => 6,
                 };
                 self.semantic_heading_line = self.lines.len();
-                let use_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
+                let has_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
+                let figlet_mobile = self.pending_figlet_mobile.unwrap_or(self.default_figlet_mobile);
+                let use_figlet = has_figlet && !(self.is_mobile && !figlet_mobile);
                 if use_figlet {
                     // Apply default figlet if no per-slide directive
                     if self.pending_figlet.is_none() {
@@ -1004,7 +1027,7 @@ mod tests {
 
     fn parse(md: &str) -> Vec<Slide> {
         let fm = Frontmatter::default();
-        parse_slides(md, &test_theme(), &fm, None)
+        parse_slides(md, &test_theme(), &fm, None, false)
     }
 
     /// Helper: collect (text, has_bg) for each line in a slide.
