@@ -5,7 +5,7 @@ mod overlay;
 use app::WebApp;
 use backend::CanvasBackend;
 use overlay::DomOverlay;
-use ratride::markdown::parse_frontmatter;
+use ratride::markdown::{parse_frontmatter, DEFAULT_LINE_HEIGHT};
 use ratride::theme;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -71,7 +71,8 @@ impl RatRide {
         };
 
         let fs = font_size.unwrap_or(16.0);
-        let backend = CanvasBackend::new(canvas.clone(), fs);
+        let lh = frontmatter.line_height.unwrap_or(DEFAULT_LINE_HEIGHT);
+        let backend = CanvasBackend::new(canvas.clone(), fs, lh);
         let overlay = DomOverlay::new(&format!("{id}-overlay"));
         let mut web_app = WebApp::new(
             backend,

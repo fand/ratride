@@ -1,10 +1,10 @@
-use ratride::render::ImagePlacement;
 use ratatui::{
     backend::{Backend, ClearType, WindowSize},
     buffer::Cell,
     layout::{Position, Size},
     style::{Color, Modifier},
 };
+use ratride::render::ImagePlacement;
 use std::io;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
@@ -20,12 +20,13 @@ pub struct CanvasBackend {
     cell_width: f64,
     cell_height: f64,
     font_size: f64,
+    line_height: f64,
     dpr: f64,
     bg_css: Option<String>,
 }
 
 impl CanvasBackend {
-    pub fn new(canvas: HtmlCanvasElement, font_size: f64) -> Self {
+    pub fn new(canvas: HtmlCanvasElement, font_size: f64, line_height: f64) -> Self {
         let ctx: CanvasRenderingContext2d = canvas
             .get_context("2d")
             .unwrap()
@@ -53,7 +54,7 @@ impl CanvasBackend {
         let cols = (css_w / cell_width) as u16;
         // Snap cell_height so rows * cell_height == css_h exactly,
         // ensuring the status bar sits flush at the canvas bottom.
-        let nominal_cell_height = scaled_font_size * 1.2;
+        let nominal_cell_height = scaled_font_size * line_height;
         let rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
         let cell_height = css_h / rows as f64;
 
@@ -65,6 +66,7 @@ impl CanvasBackend {
             cell_width,
             cell_height,
             font_size,
+            line_height,
             dpr,
             bg_css: None,
         }
@@ -90,16 +92,33 @@ impl CanvasBackend {
         self.cell_height
     }
 
+    pub fn set_line_height(&mut self, lh: f64) {
+        if (self.line_height - lh).abs() < f64::EPSILON {
+            return;
+        }
+        self.line_height = lh;
+        let css_h = self.canvas.height() as f64 / self.dpr;
+        let nominal_cell_height = self.font_size * self.line_height;
+        self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
+        self.cell_height = css_h / self.rows as f64;
+    }
+
+    pub fn line_height(&self) -> f64 {
+        self.line_height
+    }
+
     pub fn resize(&mut self) {
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;
         self.cols = (css_w / self.cell_width) as u16;
-        let nominal_cell_height = self.font_size * 1.2;
+        let nominal_cell_height = self.font_size * self.line_height;
         self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
         self.cell_height = css_h / self.rows as f64;
 
         // Re-apply DPR scale + font (setTransform is absolute, won't compound)
-        let _ = self.ctx.set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
+        let _ = self
+            .ctx
+            .set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
         let font = format!("{}px monospace", self.font_size);
         self.ctx.set_font(&font);
     }
@@ -157,17 +176,19 @@ impl CanvasBackend {
             let dst_w = draw_w;
             let dst_h = int_y1 - int_y0;
 
-            let _ = self.ctx.draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                img, 0.0, src_y, nat_w, src_h, dst_x, dst_y, dst_w, dst_h,
-            );
+            let _ = self
+                .ctx
+                .draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                    img, 0.0, src_y, nat_w, src_h, dst_x, dst_y, dst_w, dst_h,
+                );
         } else {
             // Normal: fit and center within the visible box
             let center_x = box_px + (box_pw - draw_w) / 2.0;
             let center_y = box_py + (vis_ph - draw_h) / 2.0;
 
-            let _ = self
-                .ctx
-                .draw_image_with_html_image_element_and_dw_and_dh(img, center_x, center_y, draw_w, draw_h);
+            let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                img, center_x, center_y, draw_w, draw_h,
+            );
         }
     }
 
@@ -204,7 +225,9 @@ impl Backend for CanvasBackend {
     {
         let cw = self.cell_width;
         let ch = self.cell_height;
-        let baseline_offset = self.font_size * 0.85;
+        // Center text vertically: cell_center + (baseline - text_center)
+        // where baseline = font_size * 0.85, text_center = font_size * 0.5
+        let baseline_offset = ch / 2.0 + self.font_size * 0.35;
 
         for (x, y, cell) in content {
             let px = x as f64 * cw;
@@ -215,7 +238,12 @@ impl Backend for CanvasBackend {
             if bg_css != "transparent" {
                 self.ctx.set_fill_style_str(&bg_css);
                 // Slightly oversize to eliminate sub-pixel gaps between cells
-                self.ctx.fill_rect(px - BG_PAD, py - BG_PAD, cw + BG_PAD * 2.0, ch + BG_PAD * 2.0);
+                self.ctx.fill_rect(
+                    px - BG_PAD,
+                    py - BG_PAD,
+                    cw + BG_PAD * 2.0,
+                    ch + BG_PAD * 2.0,
+                );
             } else {
                 self.ctx.clear_rect(px, py, cw, ch);
             }

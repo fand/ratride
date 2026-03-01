@@ -1,6 +1,7 @@
 <!-- layout: center -->
 <!-- figlet -->
 <!-- image_max_width: 40% -->
+<!-- line_height: 1.2 -->
 
 ![](./ratride_logo_white.png)
 
@@ -61,6 +62,7 @@ Try: `ratride slides.md --theme latte`
 ---
 <!-- theme: macchiato -->
 <!-- transition: fade -->
+<!-- bg_fill -->
 
 ## Macchiato
 
@@ -80,6 +82,7 @@ fn main() {
 ---
 <!-- theme: frappe -->
 <!-- transition: fade -->
+<!-- bg_fill -->
 
 ## Frappé
 
@@ -99,6 +102,7 @@ fn main() {
 ---
 <!-- theme: latte -->
 <!-- transition: fade -->
+<!-- bg_fill -->
 
 ## Latte
 
@@ -185,6 +189,7 @@ Per-slide HTML comments override frontmatter defaults.
 ---
 <!-- figlet:slant -->
 <!-- layout: center -->
+<!-- line_height: 1.2 -->
 
 # Slant
 

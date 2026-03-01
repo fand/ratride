@@ -4,6 +4,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use syntect::parsing::SyntaxSet;
 
+/// Default line-height multiplier when not specified in frontmatter or directives.
+pub const DEFAULT_LINE_HEIGHT: f64 = 1.5;
+
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
 pub struct Frontmatter {
@@ -11,8 +14,10 @@ pub struct Frontmatter {
     pub layout: Option<SlideLayout>,
     pub transition: Option<TransitionKind>,
     pub image_max_width: Option<f64>,
+    pub line_height: Option<f64>,
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
+    pub bg_fill: Option<bool>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -40,9 +45,7 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
     };
 
     // Find the closing `---`
-    let close_pos = after_open
-        .find("\n---")
-        .map(|i| i + 1); // point to the `---` line start
+    let close_pos = after_open.find("\n---").map(|i| i + 1); // point to the `---` line start
     let (yaml_block, body) = match close_pos {
         Some(pos) => {
             let yaml = &after_open[..pos];
@@ -98,12 +101,20 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                         fm.image_max_width = Some(pct / 100.0);
                     }
                 }
+                "line_height" => {
+                    if let Ok(lh) = value.parse::<f64>() {
+                        fm.line_height = Some(lh);
+                    }
+                }
                 "figlet" => {
                     if value.is_empty() || value == "true" {
                         fm.figlet = Some(None);
                     } else if value != "false" {
                         fm.figlet = Some(Some(value.to_string()));
                     }
+                }
+                "bg_fill" => {
+                    fm.bg_fill = Some(value == "true");
                 }
                 _ => {}
             }
@@ -182,6 +193,10 @@ pub struct Slide {
     pub semantics: Vec<SemanticElement>,
     /// Per-slide theme (defaults to the presentation theme).
     pub theme: Theme,
+    /// Line-height multiplier for web rendering (default 1.2).
+    pub line_height: f64,
+    /// Whether to fill entire screen with theme bg color.
+    pub bg_fill: bool,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -223,7 +238,9 @@ enum CommentDirective {
     Transition(TransitionKind),
     Figlet(Option<String>),
     ImageMaxWidth(f64),
+    LineHeight(f64),
     Theme(Theme),
+    BgFill(bool),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -265,10 +282,21 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
             return Some(CommentDirective::ImageMaxWidth(pct / 100.0));
         }
     }
+    if let Some(value) = inner.strip_prefix("line_height:") {
+        if let Ok(lh) = value.trim().parse::<f64>() {
+            return Some(CommentDirective::LineHeight(lh));
+        }
+    }
     if let Some(value) = inner.strip_prefix("theme:") {
         if let Some(t) = crate::theme::theme_from_name(value.trim()) {
             return Some(CommentDirective::Theme(t));
         }
+    }
+    if inner == "bg_fill" {
+        return Some(CommentDirective::BgFill(true));
+    }
+    if let Some(value) = inner.strip_prefix("bg_fill:") {
+        return Some(CommentDirective::BgFill(value.trim() == "true"));
     }
     None
 }
@@ -310,7 +338,11 @@ struct MdConverter<'a> {
     default_layout: Option<SlideLayout>,
     default_transition: Option<TransitionKind>,
     default_image_max_width: Option<f64>,
+    default_line_height: Option<f64>,
+    pending_line_height: Option<f64>,
     default_figlet: Option<Option<String>>,
+    default_bg_fill: Option<bool>,
+    pending_bg_fill: Option<bool>,
     // External figlet renderer
     figlet_fn: Option<&'a FigletFn>,
     // Default theme for resetting after each slide
@@ -362,7 +394,11 @@ impl<'a> MdConverter<'a> {
             default_layout: frontmatter.layout.clone(),
             default_transition: frontmatter.transition.clone(),
             default_image_max_width: frontmatter.image_max_width,
+            default_line_height: frontmatter.line_height,
+            pending_line_height: None,
             default_figlet: frontmatter.figlet.clone(),
+            default_bg_fill: frontmatter.bg_fill,
+            pending_bg_fill: None,
             figlet_fn,
             default_theme,
         }
@@ -393,9 +429,8 @@ impl<'a> MdConverter<'a> {
             bq_spans.extend(spans);
             self.lines.push(Line::from(bq_spans));
         } else if self.in_code_block {
-            self.lines.push(
-                Line::from(spans).style(Style::default().bg(self.theme.surface)),
-            );
+            self.lines
+                .push(Line::from(spans).style(Style::default().bg(self.theme.surface)));
         } else {
             self.lines.push(Line::from(spans));
         }
@@ -438,12 +473,24 @@ impl<'a> MdConverter<'a> {
                     transition: TransitionKind::default(),
                     semantics: Vec::new(),
                     theme: Theme::default(),
+                    line_height: DEFAULT_LINE_HEIGHT,
+                    bg_fill: false,
                 },
             };
             slide.images = images;
             slide.transition = transition;
             slide.semantics = semantics;
             slide.theme = self.theme.clone();
+            slide.line_height = self
+                .pending_line_height
+                .take()
+                .or(self.default_line_height)
+                .unwrap_or(DEFAULT_LINE_HEIGHT);
+            slide.bg_fill = self
+                .pending_bg_fill
+                .take()
+                .or(self.default_bg_fill)
+                .unwrap_or(false);
             self.slides.push(slide);
         }
         // Reset theme to default for next slide
@@ -499,10 +546,16 @@ impl<'a> MdConverter<'a> {
                 Some(CommentDirective::ImageMaxWidth(pct)) => {
                     self.pending_image_max_width = Some(pct);
                 }
+                Some(CommentDirective::LineHeight(lh)) => {
+                    self.pending_line_height = Some(lh);
+                }
                 Some(CommentDirective::Theme(t)) => {
                     self.syntect_theme = t.syntect_theme();
                     self.style_stack[0] = Style::default().fg(t.fg);
                     self.theme = t;
+                }
+                Some(CommentDirective::BgFill(v)) => {
+                    self.pending_bg_fill = Some(v);
                 }
                 None => {}
             },
@@ -707,13 +760,13 @@ impl<'a> MdConverter<'a> {
                 self.link_url = dest_url.to_string();
                 self.link_text_buf.clear();
                 self.link_start_line = self.lines.len();
-                self.link_start_col = self.current_spans.iter().map(|s| s.width()).sum();
+                self.link_start_col = self.current_spans.iter().map(|s| s.width()).sum::<usize>()
+                    + if self.in_blockquote { 2 } else { 0 }; // "│ " prefix
                 let link_color = self.theme.link;
                 self.push_style(|s| s.fg(link_color).add_modifier(Modifier::UNDERLINED));
             }
             Event::End(TagEnd::Link) => {
-                let end_col: usize =
-                    self.link_start_col + Span::raw(&self.link_text_buf).width();
+                let end_col: usize = self.link_start_col + Span::raw(&self.link_text_buf).width();
                 self.semantics.push(SemanticElement::Link {
                     url: std::mem::take(&mut self.link_url),
                     text: std::mem::take(&mut self.link_text_buf),
@@ -789,13 +842,9 @@ impl<'a> MdConverter<'a> {
         if let Some(syntax) = syntax {
             let mut h = syntect::easy::HighlightLines::new(syntax, &self.syntect_theme);
             for line in code.split('\n') {
-                let regions = h
-                    .highlight_line(line, &self.syntax_set)
-                    .unwrap_or_default();
-                let mut spans: Vec<Span<'static>> = vec![Span::styled(
-                    "  ",
-                    Style::default().bg(bg),
-                )];
+                let regions = h.highlight_line(line, &self.syntax_set).unwrap_or_default();
+                let mut spans: Vec<Span<'static>> =
+                    vec![Span::styled("  ", Style::default().bg(bg))];
                 for (syn_style, text) in regions {
                     let fg_color = Color::Rgb(
                         syn_style.foreground.r,
@@ -803,13 +852,22 @@ impl<'a> MdConverter<'a> {
                         syn_style.foreground.b,
                     );
                     let mut style = Style::default().fg(fg_color).bg(bg);
-                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::BOLD) {
+                    if syn_style
+                        .font_style
+                        .contains(syntect::highlighting::FontStyle::BOLD)
+                    {
                         style = style.add_modifier(Modifier::BOLD);
                     }
-                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::ITALIC) {
+                    if syn_style
+                        .font_style
+                        .contains(syntect::highlighting::FontStyle::ITALIC)
+                    {
                         style = style.add_modifier(Modifier::ITALIC);
                     }
-                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE) {
+                    if syn_style
+                        .font_style
+                        .contains(syntect::highlighting::FontStyle::UNDERLINE)
+                    {
                         style = style.add_modifier(Modifier::UNDERLINED);
                     }
                     spans.push(Span::styled(text.to_string(), style));
@@ -873,6 +931,16 @@ impl<'a> MdConverter<'a> {
                 transition,
                 semantics: std::mem::take(&mut self.semantics),
                 theme: self.theme.clone(),
+                line_height: self
+                    .pending_line_height
+                    .take()
+                    .or(self.default_line_height)
+                    .unwrap_or(1.2),
+                bg_fill: self
+                    .pending_bg_fill
+                    .take()
+                    .or(self.default_bg_fill)
+                    .unwrap_or(false),
             });
         }
         self.slides
@@ -909,6 +977,8 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 transition: TransitionKind::default(),
                 semantics: Vec::new(),
                 theme: Theme::default(),
+                line_height: 1.2,
+                bg_fill: false,
             }
         }
         None => Slide {
@@ -919,6 +989,8 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             transition: TransitionKind::default(),
             semantics: Vec::new(),
             theme: Theme::default(),
+            line_height: 1.2,
+            bg_fill: false,
         },
     }
 }
@@ -943,8 +1015,7 @@ mod tests {
             .iter()
             .map(|l| {
                 let text: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                let has_bg = l.style.bg.is_some()
-                    || l.spans.iter().any(|s| s.style.bg.is_some());
+                let has_bg = l.style.bg.is_some() || l.spans.iter().any(|s| s.style.bg.is_some());
                 (text, has_bg)
             })
             .collect()
@@ -1020,15 +1091,9 @@ mod tests {
 
         // No two consecutive blank non-bg lines (would show as double gap)
         for w in info.windows(2) {
-            let both_blank = w[0].0.trim().is_empty()
-                && !w[0].1
-                && w[1].0.trim().is_empty()
-                && !w[1].1;
-            assert!(
-                !both_blank,
-                "found double blank gap: {:?}",
-                info
-            );
+            let both_blank =
+                w[0].0.trim().is_empty() && !w[0].1 && w[1].0.trim().is_empty() && !w[1].1;
+            assert!(!both_blank, "found double blank gap: {:?}", info);
         }
     }
 
