@@ -1,6 +1,7 @@
 <!-- layout: center -->
 <!-- figlet -->
 <!-- image_max_width: 40% -->
+<!-- line_height: 1.2 -->
 
 ![](./ratride_logo_white.png)
 
@@ -185,6 +186,7 @@ Per-slide HTML comments override frontmatter defaults.
 ---
 <!-- figlet:slant -->
 <!-- layout: center -->
+<!-- line_height: 1.2 -->
 
 # Slant
 

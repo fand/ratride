@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span, Text};
 use syntect::parsing::SyntaxSet;
 
 /// Default line-height multiplier when not specified in frontmatter or directives.
-pub const DEFAULT_LINE_HEIGHT: f64 = 1.2;
+pub const DEFAULT_LINE_HEIGHT: f64 = 1.5;
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
@@ -44,9 +44,7 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
     };
 
     // Find the closing `---`
-    let close_pos = after_open
-        .find("\n---")
-        .map(|i| i + 1); // point to the `---` line start
+    let close_pos = after_open.find("\n---").map(|i| i + 1); // point to the `---` line start
     let (yaml_block, body) = match close_pos {
         Some(pos) => {
             let yaml = &after_open[..pos];
@@ -414,9 +412,8 @@ impl<'a> MdConverter<'a> {
             bq_spans.extend(spans);
             self.lines.push(Line::from(bq_spans));
         } else if self.in_code_block {
-            self.lines.push(
-                Line::from(spans).style(Style::default().bg(self.theme.surface)),
-            );
+            self.lines
+                .push(Line::from(spans).style(Style::default().bg(self.theme.surface)));
         } else {
             self.lines.push(Line::from(spans));
         }
@@ -742,8 +739,7 @@ impl<'a> MdConverter<'a> {
                 self.push_style(|s| s.fg(link_color).add_modifier(Modifier::UNDERLINED));
             }
             Event::End(TagEnd::Link) => {
-                let end_col: usize =
-                    self.link_start_col + Span::raw(&self.link_text_buf).width();
+                let end_col: usize = self.link_start_col + Span::raw(&self.link_text_buf).width();
                 self.semantics.push(SemanticElement::Link {
                     url: std::mem::take(&mut self.link_url),
                     text: std::mem::take(&mut self.link_text_buf),
@@ -819,13 +815,9 @@ impl<'a> MdConverter<'a> {
         if let Some(syntax) = syntax {
             let mut h = syntect::easy::HighlightLines::new(syntax, &self.syntect_theme);
             for line in code.split('\n') {
-                let regions = h
-                    .highlight_line(line, &self.syntax_set)
-                    .unwrap_or_default();
-                let mut spans: Vec<Span<'static>> = vec![Span::styled(
-                    "  ",
-                    Style::default().bg(bg),
-                )];
+                let regions = h.highlight_line(line, &self.syntax_set).unwrap_or_default();
+                let mut spans: Vec<Span<'static>> =
+                    vec![Span::styled("  ", Style::default().bg(bg))];
                 for (syn_style, text) in regions {
                     let fg_color = Color::Rgb(
                         syn_style.foreground.r,
@@ -833,13 +825,22 @@ impl<'a> MdConverter<'a> {
                         syn_style.foreground.b,
                     );
                     let mut style = Style::default().fg(fg_color).bg(bg);
-                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::BOLD) {
+                    if syn_style
+                        .font_style
+                        .contains(syntect::highlighting::FontStyle::BOLD)
+                    {
                         style = style.add_modifier(Modifier::BOLD);
                     }
-                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::ITALIC) {
+                    if syn_style
+                        .font_style
+                        .contains(syntect::highlighting::FontStyle::ITALIC)
+                    {
                         style = style.add_modifier(Modifier::ITALIC);
                     }
-                    if syn_style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE) {
+                    if syn_style
+                        .font_style
+                        .contains(syntect::highlighting::FontStyle::UNDERLINE)
+                    {
                         style = style.add_modifier(Modifier::UNDERLINED);
                     }
                     spans.push(Span::styled(text.to_string(), style));
@@ -980,8 +981,7 @@ mod tests {
             .iter()
             .map(|l| {
                 let text: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                let has_bg = l.style.bg.is_some()
-                    || l.spans.iter().any(|s| s.style.bg.is_some());
+                let has_bg = l.style.bg.is_some() || l.spans.iter().any(|s| s.style.bg.is_some());
                 (text, has_bg)
             })
             .collect()
@@ -1057,15 +1057,9 @@ mod tests {
 
         // No two consecutive blank non-bg lines (would show as double gap)
         for w in info.windows(2) {
-            let both_blank = w[0].0.trim().is_empty()
-                && !w[0].1
-                && w[1].0.trim().is_empty()
-                && !w[1].1;
-            assert!(
-                !both_blank,
-                "found double blank gap: {:?}",
-                info
-            );
+            let both_blank =
+                w[0].0.trim().is_empty() && !w[0].1 && w[1].0.trim().is_empty() && !w[1].1;
+            assert!(!both_blank, "found double blank gap: {:?}", info);
         }
     }
 
