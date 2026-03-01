@@ -24,12 +24,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build docs
-        run: cargo run -- docs/public/slides.md --export docs/dist
+        run: cargo run -- docs/slides.md --export dist
 
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
-          path: docs/dist
+          path: dist
 
   deploy:
     if: github.ref == 'refs/heads/main'

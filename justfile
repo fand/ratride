@@ -4,11 +4,11 @@ build-wasm:
 
 # Serve docs site with live reload
 web:
-    cargo run -- docs/public/slides.md --serve
+    cargo run -- docs/slides.md --serve
 
 # Build docs for deployment
 build-docs:
-    cargo run -- docs/public/slides.md --export docs/dist
+    cargo run -- docs/slides.md --export dist
 
 # Pack npm package (dry-run)
 pack:
@@ -16,10 +16,10 @@ pack:
 
 # Release dry-run
 release-dry level:
-    cargo release {{level}}
+    cargo release {{ level }}
     cd ratride-web && npm publish --dry-run
 
 # Release cargo crate + npm package
 release level:
-    cargo release {{level}} --execute
-    cd ratride-web && npm version {{level}} && npm publish
+    cargo release {{ level }} --execute
+    cd ratride-web && npm version {{ level }} && npm publish
