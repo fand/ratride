@@ -12,9 +12,6 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
 /// Extra padding (px) added to each cell's background fill to eliminate sub-pixel gaps.
 const BG_PAD: f64 = 0.5;
 
-/// Line-height multiplier applied to font size to compute nominal cell height.
-const LINE_HEIGHT: f64 = 1.6;
-
 pub struct CanvasBackend {
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
@@ -23,12 +20,13 @@ pub struct CanvasBackend {
     cell_width: f64,
     cell_height: f64,
     font_size: f64,
+    line_height: f64,
     dpr: f64,
     bg_css: Option<String>,
 }
 
 impl CanvasBackend {
-    pub fn new(canvas: HtmlCanvasElement, font_size: f64) -> Self {
+    pub fn new(canvas: HtmlCanvasElement, font_size: f64, line_height: f64) -> Self {
         let ctx: CanvasRenderingContext2d = canvas
             .get_context("2d")
             .unwrap()
@@ -56,7 +54,7 @@ impl CanvasBackend {
         let cols = (css_w / cell_width) as u16;
         // Snap cell_height so rows * cell_height == css_h exactly,
         // ensuring the status bar sits flush at the canvas bottom.
-        let nominal_cell_height = scaled_font_size * LINE_HEIGHT;
+        let nominal_cell_height = scaled_font_size * line_height;
         let rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
         let cell_height = css_h / rows as f64;
 
@@ -68,6 +66,7 @@ impl CanvasBackend {
             cell_width,
             cell_height,
             font_size,
+            line_height,
             dpr,
             bg_css: None,
         }
@@ -93,11 +92,26 @@ impl CanvasBackend {
         self.cell_height
     }
 
+    pub fn set_line_height(&mut self, lh: f64) {
+        if (self.line_height - lh).abs() < f64::EPSILON {
+            return;
+        }
+        self.line_height = lh;
+        let css_h = self.canvas.height() as f64 / self.dpr;
+        let nominal_cell_height = self.font_size * self.line_height;
+        self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
+        self.cell_height = css_h / self.rows as f64;
+    }
+
+    pub fn line_height(&self) -> f64 {
+        self.line_height
+    }
+
     pub fn resize(&mut self) {
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;
         self.cols = (css_w / self.cell_width) as u16;
-        let nominal_cell_height = self.font_size * LINE_HEIGHT;
+        let nominal_cell_height = self.font_size * self.line_height;
         self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
         self.cell_height = css_h / self.rows as f64;
 

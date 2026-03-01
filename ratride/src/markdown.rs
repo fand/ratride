@@ -4,6 +4,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use syntect::parsing::SyntaxSet;
 
+/// Default line-height multiplier when not specified in frontmatter or directives.
+pub const DEFAULT_LINE_HEIGHT: f64 = 1.2;
+
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
 pub struct Frontmatter {
@@ -11,6 +14,7 @@ pub struct Frontmatter {
     pub layout: Option<SlideLayout>,
     pub transition: Option<TransitionKind>,
     pub image_max_width: Option<f64>,
+    pub line_height: Option<f64>,
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
 }
@@ -98,6 +102,11 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                         fm.image_max_width = Some(pct / 100.0);
                     }
                 }
+                "line_height" => {
+                    if let Ok(lh) = value.parse::<f64>() {
+                        fm.line_height = Some(lh);
+                    }
+                }
                 "figlet" => {
                     if value.is_empty() || value == "true" {
                         fm.figlet = Some(None);
@@ -182,6 +191,8 @@ pub struct Slide {
     pub semantics: Vec<SemanticElement>,
     /// Per-slide theme (defaults to the presentation theme).
     pub theme: Theme,
+    /// Line-height multiplier for web rendering (default 1.2).
+    pub line_height: f64,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -223,6 +234,7 @@ enum CommentDirective {
     Transition(TransitionKind),
     Figlet(Option<String>),
     ImageMaxWidth(f64),
+    LineHeight(f64),
     Theme(Theme),
 }
 
@@ -263,6 +275,11 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
         let value = value.trim().trim_end_matches('%');
         if let Ok(pct) = value.parse::<f64>() {
             return Some(CommentDirective::ImageMaxWidth(pct / 100.0));
+        }
+    }
+    if let Some(value) = inner.strip_prefix("line_height:") {
+        if let Ok(lh) = value.trim().parse::<f64>() {
+            return Some(CommentDirective::LineHeight(lh));
         }
     }
     if let Some(value) = inner.strip_prefix("theme:") {
@@ -310,6 +327,8 @@ struct MdConverter<'a> {
     default_layout: Option<SlideLayout>,
     default_transition: Option<TransitionKind>,
     default_image_max_width: Option<f64>,
+    default_line_height: Option<f64>,
+    pending_line_height: Option<f64>,
     default_figlet: Option<Option<String>>,
     // External figlet renderer
     figlet_fn: Option<&'a FigletFn>,
@@ -362,6 +381,8 @@ impl<'a> MdConverter<'a> {
             default_layout: frontmatter.layout.clone(),
             default_transition: frontmatter.transition.clone(),
             default_image_max_width: frontmatter.image_max_width,
+            default_line_height: frontmatter.line_height,
+            pending_line_height: None,
             default_figlet: frontmatter.figlet.clone(),
             figlet_fn,
             default_theme,
@@ -438,12 +459,18 @@ impl<'a> MdConverter<'a> {
                     transition: TransitionKind::default(),
                     semantics: Vec::new(),
                     theme: Theme::default(),
+                    line_height: DEFAULT_LINE_HEIGHT,
                 },
             };
             slide.images = images;
             slide.transition = transition;
             slide.semantics = semantics;
             slide.theme = self.theme.clone();
+            slide.line_height = self
+                .pending_line_height
+                .take()
+                .or(self.default_line_height)
+                .unwrap_or(DEFAULT_LINE_HEIGHT);
             self.slides.push(slide);
         }
         // Reset theme to default for next slide
@@ -498,6 +525,9 @@ impl<'a> MdConverter<'a> {
                 }
                 Some(CommentDirective::ImageMaxWidth(pct)) => {
                     self.pending_image_max_width = Some(pct);
+                }
+                Some(CommentDirective::LineHeight(lh)) => {
+                    self.pending_line_height = Some(lh);
                 }
                 Some(CommentDirective::Theme(t)) => {
                     self.syntect_theme = t.syntect_theme();
@@ -873,6 +903,11 @@ impl<'a> MdConverter<'a> {
                 transition,
                 semantics: std::mem::take(&mut self.semantics),
                 theme: self.theme.clone(),
+                line_height: self
+                    .pending_line_height
+                    .take()
+                    .or(self.default_line_height)
+                    .unwrap_or(1.2),
             });
         }
         self.slides
@@ -909,6 +944,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 transition: TransitionKind::default(),
                 semantics: Vec::new(),
                 theme: Theme::default(),
+                line_height: 1.2,
             }
         }
         None => Slide {
@@ -919,6 +955,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             transition: TransitionKind::default(),
             semantics: Vec::new(),
             theme: Theme::default(),
+            line_height: 1.2,
         },
     }
 }

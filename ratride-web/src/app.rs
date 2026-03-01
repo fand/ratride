@@ -208,6 +208,10 @@ impl WebApp {
     pub fn tick(&mut self, timestamp: f64) {
         self.last_timestamp = timestamp;
 
+        // Update per-slide line_height if changed
+        let slide_lh = self.slides[self.current_page].line_height;
+        self.terminal.backend_mut().set_line_height(slide_lh);
+
         // Update cols/rows from backend
         self.terminal.backend_mut().resize();
         self.cols = self.terminal.backend().cols();
