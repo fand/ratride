@@ -222,11 +222,17 @@ impl WebApp {
 
         // Canvas doesn't retain cell state like a terminal, so reset viewport
         // buffer every frame to force full redraw (prevents stale pixels on scroll).
+        // Use slide's bg color for canvas clear when bg_fill is enabled.
+        let current_page = self.current_page;
+        let slide = self.slides[current_page].clone();
+        if slide.bg_fill {
+            self.terminal.backend_mut().set_bg_color(slide.theme.bg);
+        } else {
+            self.terminal.backend_mut().set_bg_color(self.theme.bg);
+        }
         self.terminal.clear().ok();
 
-        let current_page = self.current_page;
         let total_pages = self.total_pages();
-        let slide = self.slides[current_page].clone();
         let scroll = self.scroll_offset();
         let theme = self.theme.clone();
         let layout = slide.layout.clone();
@@ -238,6 +244,20 @@ impl WebApp {
             .terminal
             .draw(|frame| {
                 let area = frame.area();
+
+                // Also fill buffer cells so flush doesn't clear_rect them back to transparent
+                if slide.bg_fill {
+                    let slide_bg = slide.theme.bg;
+                    let buf = frame.buffer_mut();
+                    for y in area.y..area.y + area.height {
+                        for x in area.x..area.x + area.width {
+                            if let Some(cell) = buf.cell_mut((x, y)) {
+                                cell.set_bg(slide_bg);
+                            }
+                        }
+                    }
+                }
+
                 let [main_area, status_area] =
                     Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
