@@ -62,6 +62,7 @@ Try: `ratride slides.md --theme latte`
 ---
 <!-- theme: macchiato -->
 <!-- transition: fade -->
+<!-- bg_fill -->
 
 ## Macchiato
 
@@ -81,6 +82,7 @@ fn main() {
 ---
 <!-- theme: frappe -->
 <!-- transition: fade -->
+<!-- bg_fill -->
 
 ## Frappé
 
