@@ -17,6 +17,7 @@ pub struct Frontmatter {
     pub line_height: Option<f64>,
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
+    pub bg_fill: Option<bool>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -112,6 +113,9 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                         fm.figlet = Some(Some(value.to_string()));
                     }
                 }
+                "bg_fill" => {
+                    fm.bg_fill = Some(value == "true");
+                }
                 _ => {}
             }
         }
@@ -191,6 +195,8 @@ pub struct Slide {
     pub theme: Theme,
     /// Line-height multiplier for web rendering (default 1.2).
     pub line_height: f64,
+    /// Whether to fill entire screen with theme bg color.
+    pub bg_fill: bool,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -234,6 +240,7 @@ enum CommentDirective {
     ImageMaxWidth(f64),
     LineHeight(f64),
     Theme(Theme),
+    BgFill(bool),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -285,6 +292,12 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
             return Some(CommentDirective::Theme(t));
         }
     }
+    if inner == "bg_fill" {
+        return Some(CommentDirective::BgFill(true));
+    }
+    if let Some(value) = inner.strip_prefix("bg_fill:") {
+        return Some(CommentDirective::BgFill(value.trim() == "true"));
+    }
     None
 }
 
@@ -328,6 +341,8 @@ struct MdConverter<'a> {
     default_line_height: Option<f64>,
     pending_line_height: Option<f64>,
     default_figlet: Option<Option<String>>,
+    default_bg_fill: Option<bool>,
+    pending_bg_fill: Option<bool>,
     // External figlet renderer
     figlet_fn: Option<&'a FigletFn>,
     // Default theme for resetting after each slide
@@ -382,6 +397,8 @@ impl<'a> MdConverter<'a> {
             default_line_height: frontmatter.line_height,
             pending_line_height: None,
             default_figlet: frontmatter.figlet.clone(),
+            default_bg_fill: frontmatter.bg_fill,
+            pending_bg_fill: None,
             figlet_fn,
             default_theme,
         }
@@ -457,6 +474,7 @@ impl<'a> MdConverter<'a> {
                     semantics: Vec::new(),
                     theme: Theme::default(),
                     line_height: DEFAULT_LINE_HEIGHT,
+                    bg_fill: false,
                 },
             };
             slide.images = images;
@@ -468,6 +486,11 @@ impl<'a> MdConverter<'a> {
                 .take()
                 .or(self.default_line_height)
                 .unwrap_or(DEFAULT_LINE_HEIGHT);
+            slide.bg_fill = self
+                .pending_bg_fill
+                .take()
+                .or(self.default_bg_fill)
+                .unwrap_or(false);
             self.slides.push(slide);
         }
         // Reset theme to default for next slide
@@ -530,6 +553,9 @@ impl<'a> MdConverter<'a> {
                     self.syntect_theme = t.syntect_theme();
                     self.style_stack[0] = Style::default().fg(t.fg);
                     self.theme = t;
+                }
+                Some(CommentDirective::BgFill(v)) => {
+                    self.pending_bg_fill = Some(v);
                 }
                 None => {}
             },
@@ -910,6 +936,11 @@ impl<'a> MdConverter<'a> {
                     .take()
                     .or(self.default_line_height)
                     .unwrap_or(1.2),
+                bg_fill: self
+                    .pending_bg_fill
+                    .take()
+                    .or(self.default_bg_fill)
+                    .unwrap_or(false),
             });
         }
         self.slides
@@ -947,6 +978,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 semantics: Vec::new(),
                 theme: Theme::default(),
                 line_height: 1.2,
+                bg_fill: false,
             }
         }
         None => Slide {
@@ -958,6 +990,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             semantics: Vec::new(),
             theme: Theme::default(),
             line_height: 1.2,
+            bg_fill: false,
         },
     }
 }

@@ -100,6 +100,7 @@ fn main() {
 ---
 <!-- theme: latte -->
 <!-- transition: fade -->
+<!-- bg_fill -->
 
 ## Latte
 
