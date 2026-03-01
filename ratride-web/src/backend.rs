@@ -251,6 +251,17 @@ impl Backend for CanvasBackend {
             // Draw character
             let symbol = cell.symbol();
             if !symbol.is_empty() && symbol != " " {
+                // Render full-block as filled rect to avoid sub-pixel gaps
+                if symbol == "\u{2588}" {
+                    let fg_css = Self::color_to_css(cell.fg, "#cccccc");
+                    self.ctx.set_fill_style_str(&fg_css);
+                    self.ctx.fill_rect(
+                        px - BG_PAD,
+                        py - BG_PAD,
+                        cw + BG_PAD * 2.0,
+                        ch + BG_PAD * 2.0,
+                    );
+                } else {
                 let mods = cell.modifier;
                 let bold = mods.contains(Modifier::BOLD);
                 let italic = mods.contains(Modifier::ITALIC);
@@ -288,6 +299,7 @@ impl Backend for CanvasBackend {
                 if bold || italic {
                     let base_font = format!("{}px monospace", self.font_size);
                     self.ctx.set_font(&base_font);
+                }
                 }
             }
         }

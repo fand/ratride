@@ -219,6 +219,15 @@ impl App {
         content_len > visible
     }
 
+    fn max_scroll(&self) -> u16 {
+        let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
+        let visible = term_h.saturating_sub(3) as usize;
+        let slide = &self.slides[self.current_page];
+        let content_len = slide.content.lines.len();
+        let right_len = slide.right_content.as_ref().map_or(0, |r| r.lines.len());
+        content_len.max(right_len).saturating_sub(visible) as u16
+    }
+
     fn goto_page(&mut self, page: usize) {
         if page < self.total_pages() && page != self.current_page {
             if matches!(self.image_backend, ImageBackend::Iterm2 { .. })
@@ -661,13 +670,15 @@ impl App {
                     KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => self.next_page(),
                     KeyCode::Left | KeyCode::Char('h') => self.prev_page(),
                     KeyCode::Char('j') | KeyCode::Down if self.can_scroll() => {
-                        *self.scroll_offset_mut() = self.scroll_offset().saturating_add(1);
+                        *self.scroll_offset_mut() =
+                            self.scroll_offset().saturating_add(1).min(self.max_scroll());
                     }
                     KeyCode::Char('k') | KeyCode::Up if self.can_scroll() => {
                         *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
                     }
                     KeyCode::Char('d') if self.can_scroll() => {
-                        *self.scroll_offset_mut() = self.scroll_offset().saturating_add(10);
+                        *self.scroll_offset_mut() =
+                            self.scroll_offset().saturating_add(10).min(self.max_scroll());
                     }
                     KeyCode::Char('u') if self.can_scroll() => {
                         *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
