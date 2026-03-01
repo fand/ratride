@@ -2,9 +2,17 @@
 build-wasm:
     cd ratride-web && npm run build
 
-# Serve docs site with Vite (local dev)
-web:
+# Watch Rust sources and rebuild WASM
+watch:
+    cargo watch -w ratride/src -w ratride-web/src -s "cd ratride-web && npm run build"
+
+# Serve docs with Vite dev server
+_vite:
     cd docs && npm run dev
+
+# Serve docs site with Vite + WASM watch
+web:
+    just watch & just _vite & wait
 
 # Build docs for deployment
 build-docs:
