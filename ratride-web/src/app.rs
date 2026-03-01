@@ -44,10 +44,11 @@ impl WebApp {
         frontmatter: &Frontmatter,
         overlay: DomOverlay,
         figlet_fn: Option<&FigletFn>,
+        is_mobile: bool,
     ) -> Self {
         let cols = backend.cols();
         let rows = backend.rows();
-        let slides = parse_slides(markdown, &theme, frontmatter, figlet_fn);
+        let slides = parse_slides(markdown, &theme, frontmatter, figlet_fn, is_mobile);
         let len = slides.len().max(1);
         let mut terminal = Terminal::new(backend).expect("terminal creation");
         terminal.backend_mut().set_bg_color(theme.bg);

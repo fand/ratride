@@ -70,6 +70,13 @@ impl RatRide {
                 .and_then(|v| v.as_string())
         };
 
+        let is_mobile = window
+            .match_media("(max-width: 768px)")
+            .ok()
+            .flatten()
+            .map(|mql| mql.matches())
+            .unwrap_or(false);
+
         let fs = font_size.unwrap_or(16.0);
         let lh = frontmatter.line_height.unwrap_or(DEFAULT_LINE_HEIGHT);
         let backend = CanvasBackend::new(canvas.clone(), fs, lh);
@@ -81,6 +88,7 @@ impl RatRide {
             &frontmatter,
             overlay,
             Some(&figlet_fn),
+            is_mobile,
         );
         web_app.init();
 

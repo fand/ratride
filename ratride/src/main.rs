@@ -92,7 +92,7 @@ impl App {
                 .filter(|out| out.status.success())
                 .and_then(|out| String::from_utf8(out.stdout).ok())
         };
-        let mut slides = parse_slides(markdown, &theme, frontmatter, Some(&figlet_fn));
+        let mut slides = parse_slides(markdown, &theme, frontmatter, Some(&figlet_fn), false);
         let len = slides.len().max(1);
 
         // Collect image pixel dimensions for centering.
