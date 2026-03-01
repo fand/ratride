@@ -561,6 +561,17 @@ impl App {
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
+        // Fill entire screen with theme background
+        let slide_bg = self.slides[self.current_page].theme.bg;
+        let buf = frame.buffer_mut();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_bg(slide_bg);
+                }
+            }
+        }
+
         let [main_area, status_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
