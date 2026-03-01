@@ -225,7 +225,9 @@ impl Backend for CanvasBackend {
     {
         let cw = self.cell_width;
         let ch = self.cell_height;
-        let baseline_offset = self.font_size * 0.85;
+        // Center text vertically: cell_center + (baseline - text_center)
+        // where baseline = font_size * 0.85, text_center = font_size * 0.5
+        let baseline_offset = ch / 2.0 + self.font_size * 0.35;
 
         for (x, y, cell) in content {
             let px = x as f64 * cw;
