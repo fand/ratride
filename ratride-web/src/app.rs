@@ -285,13 +285,14 @@ impl WebApp {
                 }
 
                 // Status bar
-                render::draw_status_bar(
+                render::draw_status_bar_with_options(
                     &layout,
                     current_page,
                     total_pages,
                     frame,
                     status_area,
                     &theme,
+                    true,
                 );
             })
             .expect("draw");
