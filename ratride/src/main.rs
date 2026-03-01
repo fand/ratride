@@ -6,10 +6,6 @@ use std::time::Instant;
 
 use clap::Parser;
 
-use ratride::color::{anim_color, blend_color, hue_to_rgb};
-use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_frontmatter, parse_slides};
-use ratride::render::{self, ImagePlacement};
-use ratride::theme::{self, Theme};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -20,6 +16,10 @@ use ratatui::{
     widgets::StatefulWidget,
 };
 use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
+use ratride::color::{anim_color, blend_color, hue_to_rgb};
+use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_frontmatter, parse_slides};
+use ratride::render::{self, ImagePlacement};
+use ratride::theme::{self, Theme};
 use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
 
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
@@ -524,8 +524,8 @@ impl App {
                         } else {
                             0
                         };
-                        let crop_h = (pix_h as f64 * img.height as f64
-                            / img.full_height as f64) as u32;
+                        let crop_h =
+                            (pix_h as f64 * img.height as f64 / img.full_height as f64) as u32;
                         let cropped = dyn_img.crop_imm(0, crop_y, pix_w, crop_h);
                         let mut buf = std::io::Cursor::new(Vec::new());
                         cropped
@@ -614,8 +614,7 @@ impl App {
                         } else {
                             0
                         };
-                        let full_rect =
-                            Rect::new(0, 0, placement.width, placement.full_height);
+                        let full_rect = Rect::new(0, 0, placement.width, placement.full_height);
                         let mut temp_buf = Buffer::empty(full_rect);
                         StatefulImage::new().render(full_rect, &mut temp_buf, state);
 
@@ -668,9 +667,9 @@ impl App {
     }
 }
 
-/// A tiny terminal-based Markdown slide presenter built with ratatui
+/// Ratride - Markdown slide presenter for TUI & Web
 #[derive(Parser)]
-#[command(version, about)]
+#[command(version)]
 struct Cli {
     /// Path to the Markdown slide file
     file: String,

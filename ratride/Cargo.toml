@@ -2,7 +2,7 @@
 name = "ratride"
 version = "0.5.0"
 edition = "2024"
-description = "A tiny terminal-based Markdown slide presenter built with ratatui"
+description = "Markdown slide presenter for TUI & Web"
 license = "MIT"
 repository = "https://github.com/fand/ratride"
 readme = "../README.md"
