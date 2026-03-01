@@ -107,6 +107,14 @@ impl WebApp {
         content_len > visible
     }
 
+    fn max_scroll(&self) -> u16 {
+        let visible = self.rows.saturating_sub(3) as usize;
+        let slide = &self.slides[self.current_page];
+        let content_len = slide.content.lines.len();
+        let right_len = slide.right_content.as_ref().map_or(0, |r| r.lines.len());
+        content_len.max(right_len).saturating_sub(visible) as u16
+    }
+
     fn goto_page(&mut self, page: usize) {
         if page < self.total_pages() && page != self.current_page {
             self.current_page = page;
@@ -130,13 +138,15 @@ impl WebApp {
             "ArrowRight" | "l" | " " => self.next_page(),
             "ArrowLeft" | "h" => self.prev_page(),
             "ArrowDown" | "j" if self.can_scroll() => {
-                *self.scroll_offset_mut() = self.scroll_offset().saturating_add(1);
+                *self.scroll_offset_mut() =
+                    self.scroll_offset().saturating_add(1).min(self.max_scroll());
             }
             "ArrowUp" | "k" if self.can_scroll() => {
                 *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
             }
             "d" if self.can_scroll() => {
-                *self.scroll_offset_mut() = self.scroll_offset().saturating_add(10);
+                *self.scroll_offset_mut() =
+                    self.scroll_offset().saturating_add(10).min(self.max_scroll());
             }
             "u" if self.can_scroll() => {
                 *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);

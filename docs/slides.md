@@ -201,28 +201,78 @@ Fonts depend on your `figlet` installation.
 
 ## Scrollable Content
 
-Scroll: `j`/`k` or `↓`/`↑`. Half-page: `d`/`u`.
+Scroll: `↓`/`↑` or `j`/`k`. Half-page: `d`/`u`.
 
-- Lorem ipsum dolor sit amet
-- Consectetur adipiscing elit
-- Sed do eiusmod tempor incididunt
-- Ut labore et dolore magna aliqua
-- Ut enim ad minim veniam
-- Quis nostrud exercitation ullamco
-- Laboris nisi ut aliquip ex ea
-- Commodo consequat duis aute irure
-- Dolor in reprehenderit in voluptate
-- Velit esse cillum dolore eu fugiat
-- Nulla pariatur excepteur sint
-- Occaecat cupidatat non proident
-- Sunt in culpa qui officia deserunt
-- Mollit anim id est laborum
-- Sed ut perspiciatis unde omnis
-- Iste natus error sit voluptatem
-- Accusantium doloremque laudantium
-- Totam rem aperiam eaque ipsa
-- Quae ab illo inventore veritatis
-- Et quasi architecto beatae vitae
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
 
 ---
 
