@@ -734,7 +734,8 @@ impl<'a> MdConverter<'a> {
                 self.link_url = dest_url.to_string();
                 self.link_text_buf.clear();
                 self.link_start_line = self.lines.len();
-                self.link_start_col = self.current_spans.iter().map(|s| s.width()).sum();
+                self.link_start_col = self.current_spans.iter().map(|s| s.width()).sum::<usize>()
+                    + if self.in_blockquote { 2 } else { 0 }; // "│ " prefix
                 let link_color = self.theme.link;
                 self.push_style(|s| s.fg(link_color).add_modifier(Modifier::UNDERLINED));
             }
