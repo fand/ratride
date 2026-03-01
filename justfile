@@ -2,9 +2,9 @@
 build-wasm:
     cd ratride-web && npm run build
 
-# Serve docs site with live reload
+# Serve docs site with Vite (local dev)
 web:
-    cargo run -- docs/slides.md --serve
+    cd docs && npm run dev
 
 # Build docs for deployment
 build-docs:

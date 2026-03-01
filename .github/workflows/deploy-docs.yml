@@ -21,15 +21,26 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Build WASM
+        run: cd ratride-web && npm run build
 
       - name: Build docs
-        run: cargo run -- docs/slides.md --export dist
+        run: cd docs && npm install && npm run build
 
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
-          path: dist
+          path: docs/dist
 
   deploy:
     if: github.ref == 'refs/heads/main'

@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" href="./ratride_favicon.png" />
+        <title>Ratride - TUI slide presenter with FX</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                background: #1e1e2e;
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+    <body>
+        <script type="module">
+            import { run } from "ratride";
+
+            async function main() {
+                const md = await fetch("./slides.md").then((r) => r.text());
+                run(md);
+            }
+
+            main();
+        </script>
+    </body>
+</html>
