@@ -488,8 +488,7 @@ impl App {
             let completed = terminal.draw(|frame| self.draw(frame))?;
             self.prev_buffer = Some(completed.buffer.clone());
             if self.effect.is_none() {
-                let bg = self.slides[self.current_page].theme.bg;
-                self.flush_iterm2_images(bg)?;
+                self.flush_iterm2_images()?;
             }
             self.handle_events()?;
             let elapsed = self.last_frame.elapsed();
@@ -501,36 +500,8 @@ impl App {
         Ok(())
     }
 
-    /// Flatten alpha in a `DynamicImage` against an opaque background colour,
-    /// then PNG-encode and base64-encode the result.
-    fn flatten_alpha(
-        dyn_img: &image::DynamicImage,
-        bg_r: u8,
-        bg_g: u8,
-        bg_b: u8,
-    ) -> io::Result<(usize, String)> {
-        let rgba = dyn_img.to_rgba8();
-        let (w, h) = (rgba.width(), rgba.height());
-        let mut rgb = image::RgbImage::new(w, h);
-        for (x, y, px) in rgba.enumerate_pixels() {
-            let a = px[3] as f32 / 255.0;
-            let r = (px[0] as f32 * a + bg_r as f32 * (1.0 - a)) as u8;
-            let g = (px[1] as f32 * a + bg_g as f32 * (1.0 - a)) as u8;
-            let b = (px[2] as f32 * a + bg_b as f32 * (1.0 - a)) as u8;
-            rgb.put_pixel(x, y, image::Rgb([r, g, b]));
-        }
-        let mut buf = std::io::Cursor::new(Vec::new());
-        image::DynamicImage::ImageRgb8(rgb)
-            .write_to(&mut buf, image::ImageFormat::Png)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        let bytes = buf.into_inner();
-        let size = bytes.len();
-        let b64 = STANDARD.encode(&bytes);
-        Ok((size, b64))
-    }
-
     /// Write iTerm2 inline image escape sequences directly to stdout.
-    fn flush_iterm2_images(&self, bg: ratatui::style::Color) -> io::Result<()> {
+    fn flush_iterm2_images(&self) -> io::Result<()> {
         if let ImageBackend::Iterm2 {
             ref images,
             ref dyn_images,
@@ -540,14 +511,10 @@ impl App {
             if pending.is_empty() {
                 return Ok(());
             }
-            let (bg_r, bg_g, bg_b) = match bg {
-                ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
-                _ => (0, 0, 0),
-            };
             let mut stdout = io::stdout();
             for img in pending {
                 let (size, b64) = if img.full_height > img.height {
-                    // Image partially off-screen: crop then flatten alpha.
+                    // Image partially off-screen: crop the source image to the visible portion.
                     if let Some(dyn_img) = dyn_images.get(&img.path) {
                         let pix_h = dyn_img.height();
                         let pix_w = dyn_img.width();
@@ -560,14 +527,19 @@ impl App {
                         let crop_h =
                             (pix_h as f64 * img.height as f64 / img.full_height as f64) as u32;
                         let cropped = dyn_img.crop_imm(0, crop_y, pix_w, crop_h);
-                        Self::flatten_alpha(&cropped, bg_r, bg_g, bg_b)?
+                        let mut buf = std::io::Cursor::new(Vec::new());
+                        cropped
+                            .write_to(&mut buf, image::ImageFormat::Png)
+                            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                        let bytes = buf.into_inner();
+                        let size = bytes.len();
+                        let b64 = STANDARD.encode(&bytes);
+                        (size, b64)
                     } else if let Some((size, b64)) = images.get(&img.path) {
                         (*size, b64.clone())
                     } else {
                         continue;
                     }
-                } else if let Some(dyn_img) = dyn_images.get(&img.path) {
-                    Self::flatten_alpha(dyn_img, bg_r, bg_g, bg_b)?
                 } else if let Some((size, b64)) = images.get(&img.path) {
                     (*size, b64.clone())
                 } else {
