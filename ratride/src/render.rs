@@ -160,18 +160,16 @@ pub fn draw_scrollbar(
 }
 
 pub fn draw_status_bar(
-    layout: &SlideLayout,
     current_page: usize,
     total: usize,
     frame: &mut Frame,
     area: Rect,
     theme: &Theme,
 ) {
-    draw_status_bar_with_options(layout, current_page, total, frame, area, theme, false);
+    draw_status_bar_with_options(current_page, total, frame, area, theme, false);
 }
 
 pub fn draw_status_bar_with_options(
-    layout: &SlideLayout,
     current_page: usize,
     total: usize,
     frame: &mut Frame,
@@ -179,13 +177,8 @@ pub fn draw_status_bar_with_options(
     theme: &Theme,
     is_web: bool,
 ) {
-    let layout_label = match layout {
-        SlideLayout::Default => "",
-        SlideLayout::Center => " [center]",
-        SlideLayout::TwoColumn => " [two-column]",
-    };
     let quit_str = if is_web { "" } else { "  q:quit" };
-    let left = format!(" ←/→:page  ↓/↑:scroll{}{}", quit_str, layout_label);
+    let left = format!(" ←/→:page  ↓/↑:scroll{}", quit_str);
     let right = format!("[{}/{}] ", current_page + 1, total);
 
     let style = ratatui::style::Style::default()
