@@ -587,7 +587,6 @@ impl App {
         let [main_area, status_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
-        let layout = slide.layout.clone();
         let slide_theme = slide.theme.clone();
         let scroll = self.scroll_offset();
 
@@ -611,7 +610,6 @@ impl App {
 
         // Status bar
         render::draw_status_bar(
-            &layout,
             self.current_page,
             self.total_pages(),
             frame,

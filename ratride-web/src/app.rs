@@ -246,7 +246,6 @@ impl WebApp {
         let total_pages = self.total_pages();
         let scroll = self.scroll_offset();
         let theme = self.theme.clone();
-        let layout = slide.layout.clone();
 
         let mut effect = self.effect.take();
         let mut placements = Vec::new();
@@ -285,13 +284,13 @@ impl WebApp {
                 }
 
                 // Status bar
-                render::draw_status_bar(
-                    &layout,
+                render::draw_status_bar_with_options(
                     current_page,
                     total_pages,
                     frame,
                     status_area,
                     &theme,
+                    true,
                 );
             })
             .expect("draw");

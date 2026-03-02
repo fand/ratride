@@ -160,31 +160,42 @@ pub fn draw_scrollbar(
 }
 
 pub fn draw_status_bar(
-    layout: &SlideLayout,
     current_page: usize,
     total: usize,
     frame: &mut Frame,
     area: Rect,
     theme: &Theme,
 ) {
-    let layout_label = match layout {
-        SlideLayout::Default => "",
-        SlideLayout::Center => " [center]",
-        SlideLayout::TwoColumn => " [two-column]",
-    };
-    let status = format!(
-        " ←/→:page  ↓/↑:scroll  q:quit{}    [{}/{}]",
-        layout_label,
-        current_page + 1,
-        total,
-    );
+    draw_status_bar_with_options(current_page, total, frame, area, theme, false);
+}
+
+pub fn draw_status_bar_with_options(
+    current_page: usize,
+    total: usize,
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    is_web: bool,
+) {
+    let quit_str = if is_web { "" } else { "  q:quit" };
+    let left = format!(" ←/→:page  ↓/↑:scroll{}", quit_str);
+    let right = format!("[{}/{}] ", current_page + 1, total);
+
+    let style = ratatui::style::Style::default()
+        .bg(theme.status_bg)
+        .fg(theme.status_fg);
+
+    // Fill background
+    frame.render_widget(Paragraph::new("").style(style), area);
+
+    let [left_area, right_area] =
+        Layout::horizontal([Constraint::Fill(1), Constraint::Length(right.len() as u16)])
+            .areas(area);
+
+    frame.render_widget(Paragraph::new(left).style(style), left_area);
     frame.render_widget(
-        Paragraph::new(status).style(
-            ratatui::style::Style::default()
-                .bg(theme.status_bg)
-                .fg(theme.status_fg),
-        ),
-        area,
+        Paragraph::new(right).alignment(Alignment::Right).style(style),
+        right_area,
     );
 }
 
