@@ -112,7 +112,7 @@ impl FigFont {
 
 /// Render text using a built-in font. Returns `None` if the font is not bundled.
 pub fn render_builtin(text: &str, font: Option<&str>) -> Option<String> {
-    let font_name = font.unwrap_or("");
+    let font_name = font.unwrap_or("ANSI Shadow");
     let flf = match font_name {
         "ANSI Shadow" | "ansi_shadow" | "ansi-shadow" => ANSI_SHADOW_FLF,
         _ => return None,
