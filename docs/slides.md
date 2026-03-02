@@ -2,7 +2,7 @@
 figlet_mobile: false
 ---
 <!-- layout: center -->
-<!-- figlet -->
+<!-- figlet: ansi_shadow -->
 <!-- image_max_width: 40% -->
 <!-- line_height: 1.2 -->
 

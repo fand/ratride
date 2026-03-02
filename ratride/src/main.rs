@@ -74,6 +74,11 @@ struct App {
 impl App {
     fn new(markdown: &str, base_dir: &Path, theme: Theme, frontmatter: &Frontmatter) -> Self {
         let figlet_fn = |text: &str, font: Option<&str>| -> Option<String> {
+            // Try built-in fonts first
+            if let Some(result) = ratride::figlet::render_builtin(text, font) {
+                return Some(result);
+            }
+            // Fall back to external figlet command
             let mut cmd = Command::new("figlet");
             if let Some(font) = font {
                 cmd.args(["-f", font]);
