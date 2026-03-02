@@ -33,6 +33,14 @@ Each slide can use a different font.
 
 ---
 
+<!-- figlet:ANSI Shadow -->
+
+## Shadow
+
+Built-in ANSI Shadow font (no external figlet needed).
+
+---
+
 ## No Figlet
 
 This heading is rendered normally.

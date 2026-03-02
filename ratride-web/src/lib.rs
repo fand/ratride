@@ -65,6 +65,10 @@ impl RatRide {
             .unwrap_or_default();
 
         let figlet_fn = |text: &str, font: Option<&str>| -> Option<String> {
+            // Try built-in fonts first
+            if let Some(result) = ratride::figlet::render_builtin(text, font) {
+                return Some(result);
+            }
             render_figlet_js(text, font.map(String::from))
                 .ok()
                 .and_then(|v| v.as_string())
