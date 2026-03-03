@@ -19,7 +19,8 @@
       "Bash(git -C /Users/amagi/src/github.com/fand/ratride show:*)",
       "Bash(git -C /Users/amagi/src/github.com/fand/ratride log feat/web-original..main --oneline)",
       "WebFetch(domain:ratatui.rs)",
-      "WebFetch(domain:deepwiki.com)"
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(wc:*)"
     ]
   }
 }
