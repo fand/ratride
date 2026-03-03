@@ -199,6 +199,49 @@ pub fn draw_status_bar_with_options(
     );
 }
 
+/// Draw header items at the top-right of the area, overlaying the content.
+/// Items are displayed horizontally, separated by " │ ".
+pub fn draw_header(
+    header: &[String],
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+) {
+    if header.is_empty() {
+        return;
+    }
+
+    let separator = " │ ";
+    let mut spans = Vec::new();
+    let style = ratatui::style::Style::default()
+        .bg(theme.surface)
+        .fg(theme.fg);
+    let sep_style = ratatui::style::Style::default()
+        .bg(theme.surface)
+        .fg(theme.list_bullet);
+
+    for (i, item) in header.iter().enumerate() {
+        if i > 0 {
+            spans.push(ratatui::text::Span::styled(separator, sep_style));
+        }
+        spans.push(ratatui::text::Span::styled(item.clone(), style));
+    }
+
+    // Add padding
+    spans.insert(0, ratatui::text::Span::styled(" ", style));
+    spans.push(ratatui::text::Span::styled(" ", style));
+
+    let line = ratatui::text::Line::from(spans);
+    let width: u16 = line.width() as u16;
+
+    // Position at top-right with 1-cell margin from the right edge
+    let x = area.x + area.width.saturating_sub(width + 1);
+    let header_area = Rect::new(x, area.y, width, 1);
+
+    let paragraph = Paragraph::new(line).alignment(Alignment::Right);
+    frame.render_widget(paragraph, header_area);
+}
+
 /// Compute how many screen rows a line occupies when word-wrapped to `width` columns.
 fn wrapped_line_height(line: &ratatui::text::Line<'_>, width: u16) -> u16 {
     if width == 0 {

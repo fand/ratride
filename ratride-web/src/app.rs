@@ -283,6 +283,9 @@ impl WebApp {
                     }
                 }
 
+                // Header (top-right overlay)
+                render::draw_header(&slide.header, frame, main_area, &theme);
+
                 // Status bar
                 render::draw_status_bar_with_options(
                     current_page,

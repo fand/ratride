@@ -593,6 +593,7 @@ impl App {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
         let slide_theme = slide.theme.clone();
+        let slide_header = slide.header.clone();
         let scroll = self.scroll_offset();
 
         // Draw slide content via core render functions
@@ -612,6 +613,9 @@ impl App {
                 self.effect = None;
             }
         }
+
+        // Header (top-right overlay)
+        render::draw_header(&slide_header, frame, main_area, &slide_theme);
 
         // Status bar
         render::draw_status_bar(

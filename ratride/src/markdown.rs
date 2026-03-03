@@ -20,6 +20,8 @@ pub struct Frontmatter {
     pub bg_fill: Option<bool>,
     /// Whether to enable figlet on mobile. Default: false (disabled on mobile).
     pub figlet_mobile: Option<bool>,
+    /// Header items displayed at top-right, overlaying the content area.
+    pub header: Option<Vec<String>>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -121,6 +123,16 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 "figlet_mobile" => {
                     fm.figlet_mobile = Some(value == "true");
                 }
+                "header" => {
+                    let items: Vec<String> = value
+                        .split('|')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    if !items.is_empty() {
+                        fm.header = Some(items);
+                    }
+                }
                 _ => {}
             }
         }
@@ -202,6 +214,8 @@ pub struct Slide {
     pub line_height: f64,
     /// Whether to fill entire screen with theme bg color.
     pub bg_fill: bool,
+    /// Header items displayed at top-right, overlaying the content area.
+    pub header: Vec<String>,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -248,6 +262,7 @@ enum CommentDirective {
     LineHeight(f64),
     Theme(Theme),
     BgFill(bool),
+    Header(Vec<String>),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -308,6 +323,16 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     if let Some(value) = inner.strip_prefix("bg_fill:") {
         return Some(CommentDirective::BgFill(value.trim() == "true"));
     }
+    if let Some(value) = inner.strip_prefix("header:") {
+        let items: Vec<String> = value
+            .split('|')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !items.is_empty() {
+            return Some(CommentDirective::Header(items));
+        }
+    }
     None
 }
 
@@ -361,6 +386,9 @@ struct MdConverter<'a> {
     is_mobile: bool,
     default_figlet_mobile: bool,
     pending_figlet_mobile: Option<bool>,
+    // Header
+    default_header: Option<Vec<String>>,
+    pending_header: Option<Vec<String>>,
 }
 
 #[derive(Clone)]
@@ -418,6 +446,8 @@ impl<'a> MdConverter<'a> {
             is_mobile,
             default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(false),
             pending_figlet_mobile: None,
+            default_header: frontmatter.header.clone(),
+            pending_header: None,
         }
     }
 
@@ -493,6 +523,7 @@ impl<'a> MdConverter<'a> {
                     theme: Theme::default(),
                     line_height: DEFAULT_LINE_HEIGHT,
                     bg_fill: false,
+                    header: Vec::new(),
                 },
             };
             slide.images = images;
@@ -509,6 +540,11 @@ impl<'a> MdConverter<'a> {
                 .take()
                 .or(self.default_bg_fill)
                 .unwrap_or(false);
+            slide.header = self
+                .pending_header
+                .take()
+                .or_else(|| self.default_header.clone())
+                .unwrap_or_default();
             self.slides.push(slide);
         }
         // Reset theme to default for next slide
@@ -577,6 +613,9 @@ impl<'a> MdConverter<'a> {
                 }
                 Some(CommentDirective::BgFill(v)) => {
                     self.pending_bg_fill = Some(v);
+                }
+                Some(CommentDirective::Header(items)) => {
+                    self.pending_header = Some(items);
                 }
                 None => {}
             },
@@ -964,6 +1003,11 @@ impl<'a> MdConverter<'a> {
                     .take()
                     .or(self.default_bg_fill)
                     .unwrap_or(false),
+                header: self
+                    .pending_header
+                    .take()
+                    .or_else(|| self.default_header.clone())
+                    .unwrap_or_default(),
             });
         }
         self.slides
@@ -1002,6 +1046,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 theme: Theme::default(),
                 line_height: 1.2,
                 bg_fill: false,
+                header: Vec::new(),
             }
         }
         None => Slide {
@@ -1014,6 +1059,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             theme: Theme::default(),
             line_height: 1.2,
             bg_fill: false,
+            header: Vec::new(),
         },
     }
 }
