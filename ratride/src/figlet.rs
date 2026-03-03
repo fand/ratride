@@ -4,6 +4,21 @@
 //! Bundled fonts are embedded at compile time via `include_str!`.
 
 const ANSI_SHADOW_FLF: &str = include_str!("../fonts/ANSI Shadow.flf");
+const STANDARD_FLF: &str = include_str!("../fonts/standard.flf");
+const BIG_FLF: &str = include_str!("../fonts/big.flf");
+const SMALL_FLF: &str = include_str!("../fonts/small.flf");
+const MINI_FLF: &str = include_str!("../fonts/mini.flf");
+const SLANT_FLF: &str = include_str!("../fonts/slant.flf");
+const SMSLANT_FLF: &str = include_str!("../fonts/smslant.flf");
+const BLOCK_FLF: &str = include_str!("../fonts/block.flf");
+const DOOM_FLF: &str = include_str!("../fonts/doom.flf");
+const EPIC_FLF: &str = include_str!("../fonts/epic.flf");
+const GRAFFITI_FLF: &str = include_str!("../fonts/graffiti.flf");
+const FRAKTUR_FLF: &str = include_str!("../fonts/fraktur.flf");
+const ROMAN_FLF: &str = include_str!("../fonts/roman.flf");
+const GOTHIC_FLF: &str = include_str!("../fonts/gothic.flf");
+const SPEED_FLF: &str = include_str!("../fonts/speed.flf");
+const SCRIPT_FLF: &str = include_str!("../fonts/script.flf");
 
 /// A parsed FIGlet font.
 struct FigFont {
@@ -115,6 +130,21 @@ pub fn render_builtin(text: &str, font: Option<&str>) -> Option<String> {
     let font_name = font.unwrap_or("ANSI Shadow");
     let flf = match font_name {
         "ANSI Shadow" | "ansi_shadow" | "ansi-shadow" => ANSI_SHADOW_FLF,
+        "standard" => STANDARD_FLF,
+        "big" => BIG_FLF,
+        "small" => SMALL_FLF,
+        "mini" => MINI_FLF,
+        "slant" => SLANT_FLF,
+        "smslant" => SMSLANT_FLF,
+        "block" => BLOCK_FLF,
+        "doom" => DOOM_FLF,
+        "epic" => EPIC_FLF,
+        "graffiti" => GRAFFITI_FLF,
+        "fraktur" => FRAKTUR_FLF,
+        "roman" => ROMAN_FLF,
+        "gothic" => GOTHIC_FLF,
+        "speed" => SPEED_FLF,
+        "script" => SCRIPT_FLF,
         _ => return None,
     };
     let fig = FigFont::parse(flf)?;
@@ -123,7 +153,24 @@ pub fn render_builtin(text: &str, font: Option<&str>) -> Option<String> {
 
 /// List of built-in font names.
 pub fn builtin_fonts() -> &'static [&'static str] {
-    &["ANSI Shadow"]
+    &[
+        "ANSI Shadow",
+        "standard",
+        "big",
+        "small",
+        "mini",
+        "slant",
+        "smslant",
+        "block",
+        "doom",
+        "epic",
+        "graffiti",
+        "fraktur",
+        "roman",
+        "gothic",
+        "speed",
+        "script",
+    ]
 }
 
 /// Render text using figrat with color. Returns ANSI-colored string.

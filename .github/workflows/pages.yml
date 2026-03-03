@@ -11,13 +11,51 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo run -- docs/slides.md --export dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Export slides
+        run: cargo run -- docs/demo.md --export export-dist
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Build WASM
+        run: cd ratride-web && npm run build
+
+      - name: Build docs
+        run: cd docs && npm install && npm run build
+
+      - name: Combine outputs
+        run: |
+          mkdir -p dist
+          cp -r docs/dist/* dist/
+          cp -r export-dist dist/export
+
       - uses: cloudflare/wrangler-action@v3
+        id: deploy
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=ratride
+
+      - name: Comment deploy URL on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.deployment-url }}';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 Deployed to Cloudflare Pages\n\n- Docs: ${url}\n- Export demo: ${url}/export/`
+            });
