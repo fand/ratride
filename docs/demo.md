@@ -17,28 +17,14 @@ A **Markdown slide tool** built with *Ratatui* + tachyonFX.
 Press `→` to go to next slide.
 
 ---
-<!-- transition: sweep-in -->
-
-In Ratride, 
-
-- You can write slides in Markdown
-- Show it both in terminal & on Web!
-- With animated transitions...
-
----
-<!-- transition: dissolve -->
+<!-- transition -->
 <!-- layout: center -->
-<!-- figlet: standard -->
 
-# It works
-# on Terminal,
+Ratride allows you 
 
----
-<!-- transition: lines -->
-<!-- layout: center -->
-<!-- figlet -->
-# and on the
-# Web!
+to make presentation 
+
+in Markdown,
 
 ---
 <!-- transition: lines-rgb -->
@@ -47,6 +33,22 @@ In Ratride,
 
 # with
 # Animation!
+
+---
+<!-- transition: dissolve -->
+<!-- layout: center -->
+<!-- figlet: standard -->
+
+# It works
+# on CLI
+
+---
+<!-- transition: lines-rgb -->
+<!-- layout: center -->
+<!-- figlet -->
+# and the
+# Web
+
 
 ---
 <!-- transition: sweep-in -->
