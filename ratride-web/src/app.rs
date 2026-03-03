@@ -284,7 +284,7 @@ impl WebApp {
                 }
 
                 // Header (top-right overlay)
-                render::draw_header(&slide.header, frame, main_area, &theme);
+                let _ = render::draw_header(&slide.header, frame, main_area, &theme);
 
                 // Status bar
                 render::draw_status_bar_with_options(
@@ -353,6 +353,15 @@ impl WebApp {
             is_center,
             &slide.content,
             content_width,
+        );
+        // Header links (top-right overlay, row 0 of main_area)
+        self.overlay.update_header_links(
+            &slide.header,
+            0.0,
+            0.0,
+            cell_w,
+            cell_h,
+            self.cols,
         );
         self.overlay.set_visible(true);
     }

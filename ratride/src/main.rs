@@ -429,7 +429,8 @@ impl App {
         }
 
         // Header (top-right overlay)
-        render::draw_header(&slide_header, frame, main_area, &slide_theme);
+        let header_links = render::draw_header(&slide_header, frame, main_area, &slide_theme);
+        self.pending_hyperlinks.extend(header_links);
 
         // Status bar
         render::draw_status_bar(

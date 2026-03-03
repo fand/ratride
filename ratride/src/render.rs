@@ -214,14 +214,15 @@ pub fn draw_status_bar_with_options(
 /// Draw header items at the top-right of the area, overlaying the content.
 /// Items are displayed horizontally, separated by " │ ".
 /// Items with a URL are rendered in the theme's link color.
+/// Returns hyperlink cells for clickable header links.
 pub fn draw_header(
     header: &[HeaderItem],
     frame: &mut Frame,
     area: Rect,
     theme: &Theme,
-) {
+) -> Vec<HyperlinkCell> {
     if header.is_empty() {
-        return;
+        return Vec::new();
     }
 
     let separator = " │ ";
@@ -236,12 +237,19 @@ pub fn draw_header(
         .bg(theme.surface)
         .fg(theme.list_bullet);
 
+    // Track span offsets for link positions
+    let mut span_offsets: Vec<(usize, &HeaderItem)> = Vec::new();
+    let mut offset: usize = 1; // starts at 1 for leading padding " "
+
     for (i, item) in header.iter().enumerate() {
         if i > 0 {
             spans.push(ratatui::text::Span::styled(separator, sep_style));
+            offset += separator.len();
         }
+        span_offsets.push((offset, item));
         let item_style = if item.url.is_some() { link_style } else { style };
         spans.push(ratatui::text::Span::styled(item.text.clone(), item_style));
+        offset += item.text.len();
     }
 
     // Add padding
@@ -255,8 +263,24 @@ pub fn draw_header(
     let x = area.x + area.width.saturating_sub(width + 1);
     let header_area = Rect::new(x, area.y, width, 1);
 
+    // Build hyperlink cells for items with URLs
+    let mut hyperlinks = Vec::new();
+    for (col_offset, item) in &span_offsets {
+        if let Some(url) = &item.url {
+            for c in 0..item.text.len() {
+                hyperlinks.push(HyperlinkCell {
+                    sx: x + *col_offset as u16 + c as u16,
+                    sy: area.y,
+                    url: url.clone(),
+                });
+            }
+        }
+    }
+
     let paragraph = Paragraph::new(line).alignment(Alignment::Right);
     frame.render_widget(paragraph, header_area);
+
+    hyperlinks
 }
 
 /// Highlight hovered hyperlink cells in the buffer by swapping fg/bg.
