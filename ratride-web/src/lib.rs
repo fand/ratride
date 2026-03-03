@@ -13,13 +13,6 @@ use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, KeyboardEvent};
 
 #[wasm_bindgen]
-extern "C" {
-    /// JS-side figlet renderer: `renderFiglet(text, font?) -> string | null`
-    #[wasm_bindgen(js_name = "renderFiglet", catch)]
-    fn render_figlet_js(text: &str, font: Option<String>) -> Result<JsValue, JsValue>;
-}
-
-#[wasm_bindgen]
 pub struct RatRide {
     #[allow(dead_code)]
     app: Rc<RefCell<WebApp>>,
@@ -65,19 +58,12 @@ impl RatRide {
             .unwrap_or_default();
 
         let figlet_fn = |text: &str, font: Option<&str>, color: Option<&str>| -> Option<String> {
-            // Use figrat with color when specified
             if let Some(color_spec) = color {
                 if let Some(art) = ratride::figlet::render_figrat(text, font, color_spec) {
                     return Some(art);
                 }
             }
-            // Try built-in fonts first
-            if let Some(result) = ratride::figlet::render_builtin(text, font) {
-                return Some(result);
-            }
-            render_figlet_js(text, font.map(String::from))
-                .ok()
-                .and_then(|v| v.as_string())
+            ratride::figlet::render_builtin(text, font)
         };
 
         let is_mobile = window

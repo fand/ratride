@@ -28,11 +28,17 @@ In Ratride,
 ---
 <!-- transition: dissolve -->
 <!-- layout: center -->
-<!-- figlet: doom -->
+<!-- figlet: standard -->
 
 # It works
-# on CLI
-# & Web
+# on Terminal,
+
+---
+<!-- transition: lines -->
+<!-- layout: center -->
+<!-- figlet -->
+# and on the
+# Web!
 
 ---
 <!-- transition: lines-rgb -->

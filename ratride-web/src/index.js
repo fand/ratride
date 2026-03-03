@@ -1,21 +1,4 @@
-import figlet from "figlet";
-import standard from "figlet/importable-fonts/Standard.js";
-import slant from "figlet/importable-fonts/Slant.js";
-import banner from "figlet/importable-fonts/Banner.js";
 import wasmInit, { RatRide } from "../pkg/ratride_web.js";
-
-figlet.parseFont("standard", standard);
-figlet.parseFont("slant", slant);
-figlet.parseFont("banner", banner);
-
-// Expose to WASM — called from Rust via wasm_bindgen extern
-globalThis.renderFiglet = (text, font) => {
-  try {
-    return figlet.textSync(text, { font: font || "standard" });
-  } catch {
-    return null;
-  }
-};
 
 const wasmUrl = new URL("../pkg/ratride_web_bg.wasm", import.meta.url);
 
@@ -31,18 +14,11 @@ let counter = 0;
 
 /**
  * @param {string} md
- * @param {{ parent?: HTMLElement, fontSize?: number, theme?: string, fonts?: Record<string, string> }} [config]
+ * @param {{ parent?: HTMLElement, fontSize?: number, theme?: string }} [config]
  * @returns {Promise<{ destroy(): void }>}
  */
 export async function run(md, config = {}) {
   await ensureInit();
-
-  // Register user-provided figlet fonts
-  if (config.fonts) {
-    for (const [name, data] of Object.entries(config.fonts)) {
-      figlet.parseFont(name, data);
-    }
-  }
 
   const { parent = document.body, theme } = config;
   const dpr = window.devicePixelRatio || 1;

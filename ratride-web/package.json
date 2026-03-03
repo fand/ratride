@@ -26,7 +26,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "figlet": "^1.10.0"
-  }
+  "dependencies": {}
 }
