@@ -1,4 +1,4 @@
-use crate::markdown::{Slide, SlideLayout};
+use crate::markdown::{HeaderItem, SemanticElement, Slide, SlideLayout};
 use crate::theme::Theme;
 use ratatui::{
     Frame,
@@ -22,6 +22,14 @@ pub struct ImagePlacement {
     pub full_height: u16,
 }
 
+/// A single hyperlink cell to be rendered via direct stdout writes (bypassing ratatui buffer).
+#[derive(Clone, Debug)]
+pub struct HyperlinkCell {
+    pub sx: u16,
+    pub sy: u16,
+    pub url: String,
+}
+
 /// Draw a slide's main content area (dispatches by layout).
 /// Returns image placements for the terminal backend to render.
 pub fn draw_slide(
@@ -29,13 +37,13 @@ pub fn draw_slide(
     scroll: u16,
     frame: &mut Frame,
     area: Rect,
-) -> Vec<ImagePlacement> {
+) -> (Vec<ImagePlacement>, Vec<HyperlinkCell>) {
     match slide.layout {
         SlideLayout::Default => draw_default(slide, scroll, frame, area),
         SlideLayout::Center => draw_center(slide, scroll, frame, area),
         SlideLayout::TwoColumn => {
             draw_two_column(slide, scroll, frame, area);
-            Vec::new()
+            (Vec::new(), Vec::new())
         }
     }
 }
@@ -45,7 +53,7 @@ pub fn draw_default(
     scroll: u16,
     frame: &mut Frame,
     area: Rect,
-) -> Vec<ImagePlacement> {
+) -> (Vec<ImagePlacement>, Vec<HyperlinkCell>) {
     let content_area = area.inner(Margin::new(2, 1));
 
     fill_line_backgrounds(&slide.content, scroll, frame, content_area);
@@ -54,6 +62,8 @@ pub fn draw_default(
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
     frame.render_widget(paragraph, content_area);
+
+    let hyperlinks = collect_hyperlinks(&slide.semantics, &slide.content, scroll, content_area, Alignment::Left);
 
     let content_len = slide.content.lines.len();
     draw_scrollbar(scroll, content_len, content_area.height, frame, area);
@@ -74,7 +84,7 @@ pub fn draw_default(
             placements.push(p);
         }
     }
-    placements
+    (placements, hyperlinks)
 }
 
 pub fn draw_center(
@@ -82,7 +92,7 @@ pub fn draw_center(
     scroll: u16,
     frame: &mut Frame,
     area: Rect,
-) -> Vec<ImagePlacement> {
+) -> (Vec<ImagePlacement>, Vec<HyperlinkCell>) {
     let content_height = slide.content.lines.len() as u16;
     let content_area = area.inner(Margin::new(2, 1));
 
@@ -97,6 +107,8 @@ pub fn draw_center(
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
     frame.render_widget(paragraph, centered_area);
+
+    let hyperlinks = collect_hyperlinks(&slide.semantics, &slide.content, scroll, centered_area, Alignment::Center);
 
     let mut placements = Vec::new();
     for img in &slide.images {
@@ -114,7 +126,7 @@ pub fn draw_center(
             placements.push(p);
         }
     }
-    placements
+    (placements, hyperlinks)
 }
 
 pub fn draw_two_column(slide: &Slide, scroll: u16, frame: &mut Frame, area: Rect) {
@@ -199,6 +211,178 @@ pub fn draw_status_bar_with_options(
     );
 }
 
+/// Draw header items at the top-right of the area, overlaying the content.
+/// Items are displayed horizontally, separated by " │ ".
+/// Items with a URL are rendered in the theme's link color.
+/// Returns hyperlink cells for clickable header links.
+pub fn draw_header(
+    header: &[HeaderItem],
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+) -> Vec<HyperlinkCell> {
+    if header.is_empty() {
+        return Vec::new();
+    }
+
+    let separator = " │ ";
+    let mut spans = Vec::new();
+    let style = ratatui::style::Style::default()
+        .bg(theme.surface)
+        .fg(theme.fg);
+    let link_style = ratatui::style::Style::default()
+        .bg(theme.surface)
+        .fg(theme.link);
+    let sep_style = ratatui::style::Style::default()
+        .bg(theme.surface)
+        .fg(theme.list_bullet);
+
+    // Track span offsets for link positions
+    let mut span_offsets: Vec<(usize, &HeaderItem)> = Vec::new();
+    let mut offset: usize = 1; // starts at 1 for leading padding " "
+
+    for (i, item) in header.iter().enumerate() {
+        if i > 0 {
+            spans.push(ratatui::text::Span::styled(separator, sep_style));
+            offset += separator.len();
+        }
+        span_offsets.push((offset, item));
+        let item_style = if item.url.is_some() { link_style } else { style };
+        spans.push(ratatui::text::Span::styled(item.text.clone(), item_style));
+        offset += item.text.len();
+    }
+
+    // Add padding
+    spans.insert(0, ratatui::text::Span::styled(" ", style));
+    spans.push(ratatui::text::Span::styled(" ", style));
+
+    let line = ratatui::text::Line::from(spans);
+    let width: u16 = line.width() as u16;
+
+    // Position at top-right with 1-cell margin from the right edge
+    let x = area.x + area.width.saturating_sub(width + 1);
+    let header_area = Rect::new(x, area.y, width, 1);
+
+    // Build hyperlink cells for items with URLs
+    let mut hyperlinks = Vec::new();
+    for (col_offset, item) in &span_offsets {
+        if let Some(url) = &item.url {
+            for c in 0..item.text.len() {
+                hyperlinks.push(HyperlinkCell {
+                    sx: x + *col_offset as u16 + c as u16,
+                    sy: area.y,
+                    url: url.clone(),
+                });
+            }
+        }
+    }
+
+    let paragraph = Paragraph::new(line).alignment(Alignment::Right);
+    frame.render_widget(paragraph, header_area);
+
+    hyperlinks
+}
+
+/// Highlight hovered hyperlink cells in the buffer by swapping fg/bg.
+pub fn highlight_hovered_hyperlinks(
+    hyperlinks: &[HyperlinkCell],
+    hovered_url: Option<&str>,
+    frame: &mut Frame,
+) {
+    let url = match hovered_url {
+        Some(u) => u,
+        None => return,
+    };
+    let buf = frame.buffer_mut();
+    for h in hyperlinks {
+        if h.url == url {
+            if let Some(cell) = buf.cell_mut((h.sx, h.sy)) {
+                let fg = cell.fg;
+                let bg = cell.bg;
+                cell.set_fg(bg);
+                cell.set_bg(fg);
+            }
+        }
+    }
+}
+
+/// Collect screen positions for hyperlink cells.
+/// The actual OSC 8 sequences are written directly to stdout after the frame is
+/// flushed, bypassing ratatui's buffer diff (which would miscount the width of
+/// cells containing embedded escape sequences).
+fn collect_hyperlinks(
+    semantics: &[SemanticElement],
+    content: &Text<'_>,
+    scroll: u16,
+    content_area: Rect,
+    alignment: Alignment,
+) -> Vec<HyperlinkCell> {
+    let width = content_area.width as usize;
+    if width == 0 {
+        return Vec::new();
+    }
+
+    let mut cells = Vec::new();
+
+    for sem in semantics {
+        let (url, line_index, start_col, end_col) = match sem {
+            SemanticElement::Link {
+                url,
+                line_index,
+                start_col,
+                end_col,
+                ..
+            } => (url, *line_index, *start_col, *end_col),
+            _ => continue,
+        };
+
+        if start_col >= end_col {
+            continue;
+        }
+
+        // Compute screen row offset for this logical line
+        let mut y_offset: i32 = 0;
+        for (i, line) in content.lines.iter().enumerate() {
+            if i == line_index {
+                break;
+            }
+            y_offset += wrapped_line_height(line, content_area.width) as i32;
+        }
+        y_offset -= scroll as i32;
+
+        // Compute centering offset for this line
+        let center_offset = if alignment == Alignment::Center {
+            let line_width = content
+                .lines
+                .get(line_index)
+                .map(|l| l.width())
+                .unwrap_or(0);
+            (width.saturating_sub(line_width)) / 2
+        } else {
+            0
+        };
+
+        for col in start_col..end_col {
+            let wrap_row = col / width;
+            let x_in_row = col % width + center_offset;
+
+            let screen_y = y_offset + wrap_row as i32;
+            if screen_y < 0 || screen_y >= content_area.height as i32 {
+                continue;
+            }
+
+            let sx = content_area.x + x_in_row as u16;
+            let sy = content_area.y + screen_y as u16;
+
+            cells.push(HyperlinkCell {
+                sx,
+                sy,
+                url: url.clone(),
+            });
+        }
+    }
+    cells
+}
 /// Compute how many screen rows a line occupies when word-wrapped to `width` columns.
 fn wrapped_line_height(line: &ratatui::text::Line<'_>, width: u16) -> u16 {
     if width == 0 {
