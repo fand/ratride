@@ -42,8 +42,7 @@ pub fn create_transition(
                     for y in area.y..area.y + area.height {
                         let line_index = (y - area.y) as f32;
                         let line_start = line_index * stagger_ms;
-                        let local_alpha =
-                            ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
+                        let local_alpha = ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
                         let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
                         let shift = ((1.0 - local_alpha) * width as f32) as u16;
 
@@ -61,12 +60,9 @@ pub fn create_transition(
                                 let d = (src_col - width) as f32;
                                 let fade = (d * 2.0 / width as f32).clamp(0.0, 1.0);
                                 if fade > 0.0 {
-                                    if let Some(old) =
-                                        prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                    if let Some(old) = prev.as_ref().and_then(|pb| pb.cell((x, y)))
                                     {
-                                        cell.set_char(
-                                            old.symbol().chars().next().unwrap_or(' '),
-                                        );
+                                        cell.set_char(old.symbol().chars().next().unwrap_or(' '));
                                         cell.set_fg(blend_color(bg, old.fg, fade));
                                         cell.set_bg(blend_color(bg, old.bg, fade));
                                     }
@@ -94,8 +90,7 @@ pub fn create_transition(
                     for y in area.y..area.y + area.height {
                         let line_index = (y - area.y) as f32;
                         let line_start = line_index * stagger_ms;
-                        let local_alpha =
-                            ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
+                        let local_alpha = ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
                         let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
                         let visible_cols = (local_alpha * width) as u16;
                         let is_odd = (y - area.y) % 2 == 1;
@@ -116,12 +111,9 @@ pub fn create_transition(
                                 };
                                 let fade = (d * 2.0 / area.width as f32).clamp(0.0, 1.0);
                                 if fade > 0.0 {
-                                    if let Some(old) =
-                                        prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                    if let Some(old) = prev.as_ref().and_then(|pb| pb.cell((x, y)))
                                     {
-                                        cell.set_char(
-                                            old.symbol().chars().next().unwrap_or(' '),
-                                        );
+                                        cell.set_char(old.symbol().chars().next().unwrap_or(' '));
                                         cell.set_fg(blend_color(bg, old.fg, fade));
                                         cell.set_bg(blend_color(bg, old.bg, fade));
                                     }
@@ -153,8 +145,12 @@ pub fn create_transition(
                             for x in area.x..area.x + width {
                                 let sym = buf[(x, y)].symbol().chars().next().unwrap_or(' ');
                                 if sym != ' ' {
-                                    if y < first { first = y; }
-                                    if y > last { last = y; }
+                                    if y < first {
+                                        first = y;
+                                    }
+                                    if y > last {
+                                        last = y;
+                                    }
                                     break;
                                 }
                             }
@@ -179,8 +175,7 @@ pub fn create_transition(
 
                         let line_index = (y - first_content) as f32;
                         let line_start = line_index * stagger_ms;
-                        let local_alpha =
-                            ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
+                        let local_alpha = ((elapsed - line_start) / line_dur_ms).clamp(0.0, 1.0);
                         let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
                         let shift = ((1.0 - local_alpha) * width as f32) as u16;
 
@@ -205,12 +200,8 @@ pub fn create_transition(
                                     cell.set_fg(color);
                                 }
                             } else {
-                                if let Some(old) =
-                                    prev.as_ref().and_then(|pb| pb.cell((x, y)))
-                                {
-                                    cell.set_char(
-                                        old.symbol().chars().next().unwrap_or(' '),
-                                    );
+                                if let Some(old) = prev.as_ref().and_then(|pb| pb.cell((x, y))) {
+                                    cell.set_char(old.symbol().chars().next().unwrap_or(' '));
                                     cell.set_fg(blend_color(bg, old.fg, global_fade));
                                     cell.set_bg(blend_color(bg, old.bg, global_fade));
                                 } else {
@@ -224,38 +215,32 @@ pub fn create_transition(
         }
         TransitionKind::SlideRgb => {
             let prev = prev_buf.clone();
-            let band_width = 24_u16;
-            fx::effect_fn_buf(
-                (),
-                (800, Interpolation::QuadOut),
-                move |_state, ctx, buf| {
-                    let alpha = ctx.alpha();
-                    let area = ctx.area;
-                    let width = area.width as f32;
-                    let edge_col = (alpha * (width + band_width as f32)) as u16;
+            let band_width = 100_u16;
+            fx::effect_fn_buf((), (800, Interpolation::Linear), move |_state, ctx, buf| {
+                let alpha = ctx.alpha();
+                let area = ctx.area;
+                let width = area.width as f32;
+                let edge_col = (alpha * (width + band_width as f32)) as u16;
 
-                    for y in area.y..area.y + area.height {
-                        for x in area.x..area.x + area.width {
-                            let col_offset = x - area.x;
-                            if col_offset >= edge_col {
-                                let cell = &mut buf[(x, y)];
-                                if let Some(old) =
-                                    prev.as_ref().and_then(|pb| pb.cell((x, y)))
-                                {
-                                    *cell = old.clone();
-                                }
-                            } else if col_offset + band_width >= edge_col {
-                                let d = edge_col - col_offset;
-                                let t = d as f32 / band_width as f32;
-                                let hue = t * 300.0;
-                                let color = hue_to_rgb(hue);
-                                let cell = &mut buf[(x, y)];
-                                cell.set_fg(color);
+                for y in area.y..area.y + area.height {
+                    for x in area.x..area.x + area.width {
+                        let col_offset = x - area.x;
+                        if col_offset >= edge_col {
+                            let cell = &mut buf[(x, y)];
+                            if let Some(old) = prev.as_ref().and_then(|pb| pb.cell((x, y))) {
+                                *cell = old.clone();
                             }
+                        } else if col_offset + band_width >= edge_col {
+                            let d = edge_col - col_offset;
+                            let t = d as f32 / band_width as f32;
+                            let hue = t * 300.0;
+                            let color = hue_to_rgb(hue);
+                            let cell = &mut buf[(x, y)];
+                            cell.set_fg(color);
                         }
                     }
-                },
-            )
+                }
+            })
         }
     })
 }
