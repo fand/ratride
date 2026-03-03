@@ -198,11 +198,28 @@ pub fn render_figrat(text: &str, font: Option<&str>, color_spec: &str) -> Option
 /// Load .flf font data by name. Checks built-in fonts first, then system paths.
 fn load_font_data(font: Option<&str>) -> Option<String> {
     let font_name = font.unwrap_or("ANSI Shadow");
-    match font_name {
-        "ANSI Shadow" | "ansi_shadow" | "ansi-shadow" => {
-            return Some(ANSI_SHADOW_FLF.to_string());
-        }
-        _ => {}
+    // Check built-in fonts first
+    let builtin = match font_name {
+        "ANSI Shadow" | "ansi_shadow" | "ansi-shadow" => Some(ANSI_SHADOW_FLF),
+        "standard" => Some(STANDARD_FLF),
+        "big" => Some(BIG_FLF),
+        "small" => Some(SMALL_FLF),
+        "mini" => Some(MINI_FLF),
+        "slant" => Some(SLANT_FLF),
+        "smslant" => Some(SMSLANT_FLF),
+        "block" => Some(BLOCK_FLF),
+        "doom" => Some(DOOM_FLF),
+        "epic" => Some(EPIC_FLF),
+        "graffiti" => Some(GRAFFITI_FLF),
+        "fraktur" => Some(FRAKTUR_FLF),
+        "roman" => Some(ROMAN_FLF),
+        "gothic" => Some(GOTHIC_FLF),
+        "speed" => Some(SPEED_FLF),
+        "script" => Some(SCRIPT_FLF),
+        _ => None,
+    };
+    if let Some(data) = builtin {
+        return Some(data.to_string());
     }
     // Try common system figlet font directories
     for dir in &[

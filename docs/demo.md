@@ -1,13 +1,13 @@
 ---
+line_height: 1.2
 figlet_mobile: false
 header:
   - [GitHub](https://github.com/fand/ratride)
 ---
 <!-- layout: center -->
-<!-- figlet: ansi_shadow -->
-<!-- image_max_width: 35% -->
-<!-- line_height: 1.2 -->
+<!-- figlet -->
 <!-- figlet_color: ff6666,ff66ff,33ffff -->
+<!-- image_max_width: 35% -->
 
 ![](./ratride_logo_white.png)
 
@@ -17,7 +17,7 @@ A **Markdown slide tool** built with *Ratatui* + tachyonFX.
 Press `→` to go to next slide.
 
 ---
-<!-- transition: slide-in -->
+<!-- transition: sweep-in -->
 
 In Ratride, 
 
@@ -209,7 +209,9 @@ Or use HTML comment to set per-slide options:
 ```
 
 ---
-<!-- figlet: small -->
+<!-- transition: sweep-in -->
+<!-- figlet -->
+<!-- figlet_color: ff8800,ff66ff -->
 
 ## Themes
 
@@ -289,6 +291,8 @@ fn main() {
 ```
 
 ---
+<!-- transition: sweep-in -->
+
 # Layout
 
 For each slide, you can choose the layout from below:
@@ -301,14 +305,14 @@ For each slide, you can choose the layout from below:
 ---
 <!-- layout: center -->
 
-You can center your contents,
+### Center
 
-with `<!-- layout: center -->`...
+or place your contents at the center
+
+with `<!-- layout: center -->`
 
 ---
-
 <!-- layout: two-column -->
-<!-- transition: sweep-in -->
 
 ## Left Column
 
@@ -327,8 +331,10 @@ Or `two-column` layout, with `<!-- layout: two-column -->`.
 3. Bar
 
 ---
+<!-- transition: sweep-in -->
 <!-- layout: center -->
 <!-- figlet -->
+<!-- figlet_color: ffff66,33ffff -->
 
 # Figlet
 
@@ -337,7 +343,7 @@ With `figlet` option, turn the headers into ascii-art banners.
 ---
 <!-- figlet: smslant -->
 
-## Figlet fonts
+## Fonts
 
 You can use figlet fonts like `<!-- figlet: slant -->`.
 The default is **ANSI Shadow**.
@@ -361,6 +367,22 @@ The list of supported fonts:
 - gothic
 - speed
 - script
+
+---
+<!-- figlet: small -->
+<!-- figlet_color: ffff66,33ffff -->
+
+## Figlet color
+
+Ratride uses figrat, a fork of figlet with color support.
+You can set text color or gradient like:
+
+- `<!-- figlet_color: ff0000 -->`: single color
+- `<!-- figlet_color: ffff66,33ffff -->`: horizontal gradient
+- `<!-- figlet_color: ffff66,33ffff y -->`: vertical gradient
+
+ref. https://github.com/fand/figrat
+
 
 ---
 <!-- layout: center -->
@@ -457,7 +479,6 @@ This slide uses the **slide-rgb** transition.
 - In `slide-rgb`, color-cycling leading edge sweeps from left to right.
 
 ---
-
 <!-- transition: lines-rgb -->
 
 ## Lines-RGB Transition
