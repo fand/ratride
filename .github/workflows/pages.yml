@@ -23,7 +23,7 @@ jobs:
           node-version: 22
 
       - name: Export slides
-        run: cargo run -- docs/demo.md --export export-dist
+        run: cargo run -- docs/public/demo.md --export export-dist
 
       - name: Install wasm-pack
         run: cargo install wasm-pack
