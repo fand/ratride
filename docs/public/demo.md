@@ -55,13 +55,13 @@ in Markdown,
 
 # Install
 
-Install from [crates.io]:
+Install from [crates.io](https://crates.io/crates/ratride):
 
 ```
 $ cargo install ratride
 ```
 
-Or you can install the JS-binding from [npm]:
+Or you can install the JS-binding from [npm](https://www.npmjs.com/package/ratride):
 
 ```
 $ npm install ratride
