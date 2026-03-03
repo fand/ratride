@@ -36,6 +36,8 @@ jobs:
 
       - name: Build docs
         run: cd docs && npm install && npm run build
+        env:
+          GITHUB_PAGES: true
 
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
