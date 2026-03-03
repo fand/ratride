@@ -8,7 +8,9 @@ use clap::Parser;
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use crossterm::cursor::MoveTo;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseEventKind,
+};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
@@ -16,15 +18,14 @@ use ratatui::{
     widgets::StatefulWidget,
 };
 use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
-use ratride::color::{anim_color, blend_color, hue_to_rgb};
-use ratride::markdown::{Frontmatter, Slide, TransitionKind, parse_frontmatter, parse_slides};
+use ratride::markdown::{Frontmatter, Slide, parse_frontmatter, parse_slides};
 use ratride::render::{self, ImagePlacement};
 use ratride::theme::{self, Theme};
-use tachyonfx::{Duration, Effect, EffectRenderer, Interpolation, Motion, fx};
+use tachyonfx::{Duration, Effect, EffectRenderer};
 
 const FRAME_DURATION: std::time::Duration = std::time::Duration::from_millis(16); // ~60fps
-const LINE_DUR_MS: f32 = 600.0; // how long each line's animation takes
-const STAGGER_MS: f32 = 60.0; // delay before next line starts
+const LINE_DUR_MS: f32 = 400.0; // how long each line's animation takes
+const STAGGER_MS: f32 = 30.0; // delay before next line starts
 
 /// Detect if the terminal supports iTerm2 inline image protocol.
 fn is_iterm2() -> bool {
@@ -65,6 +66,12 @@ struct App {
     last_frame: Instant,
     /// Deferred image draws (collected during draw, flushed after ratatui render).
     pending_images: Vec<ImagePlacement>,
+    /// Hyperlink cells for click handling and hover highlight.
+    pending_hyperlinks: Vec<render::HyperlinkCell>,
+    /// URL currently hovered by mouse (None if not hovering a link).
+    hovered_url: Option<String>,
+    /// Current mouse position.
+    mouse_pos: (u16, u16),
     /// Buffer snapshot from the previous frame (used for transition effects).
     prev_buffer: Option<Buffer>,
     /// Set when iTerm2 image areas need clearing on next frame.
@@ -198,6 +205,9 @@ impl App {
             effect: None,
             last_frame: Instant::now(),
             pending_images: Vec::new(),
+            pending_hyperlinks: Vec::new(),
+            hovered_url: None,
+            mouse_pos: (0, 0),
             prev_buffer: None,
             needs_clear: false,
         }
@@ -260,236 +270,22 @@ impl App {
         let slide = &self.slides[self.current_page];
         let bg = slide.theme.bg;
         let prev_buf = self.prev_buffer.clone();
-        Some(match slide.transition {
-            TransitionKind::None => return None,
-            TransitionKind::SlideIn => fx::fade_from_fg(bg, (400, Interpolation::QuadOut)),
-            TransitionKind::Fade => fx::fade_from_fg(bg, (600, Interpolation::SineOut)),
-            TransitionKind::Dissolve => fx::dissolve((500, Interpolation::Linear)).reversed(),
-            TransitionKind::Coalesce => fx::coalesce((500, Interpolation::QuadOut)),
-            TransitionKind::SweepIn => fx::sweep_in(
-                Motion::LeftToRight,
-                15,
-                0,
-                bg,
-                (600, Interpolation::QuadOut),
-            ),
-            TransitionKind::Lines => {
-                let prev = prev_buf.clone();
-
-                let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
-                let approx_lines = term_h as f32; // slightly overestimate for safety
-                let duration_ms = LINE_DUR_MS + STAGGER_MS * (approx_lines - 1.0).max(0.0);
-                fx::effect_fn_buf(
-                    (),
-                    (duration_ms as u32, Interpolation::Linear),
-                    move |_state, ctx, buf| {
-                        let elapsed = ctx.alpha() * duration_ms;
-                        let area = ctx.area;
-                        let width = area.width;
-
-                        for y in area.y..area.y + area.height {
-                            let line_index = (y - area.y) as f32;
-                            let line_start = line_index * STAGGER_MS;
-                            let local_alpha =
-                                ((elapsed - line_start) / LINE_DUR_MS).clamp(0.0, 1.0);
-                            let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
-                            let shift = ((1.0 - local_alpha) * width as f32) as u16;
-
-                            // Snapshot row before modifying
-                            let original: Vec<_> = (area.x..area.x + width)
-                                .map(|x| buf[(x, y)].clone())
-                                .collect();
-
-                            for x in area.x..area.x + width {
-                                let col = x - area.x;
-                                let src_col = col + shift;
-                                let cell = &mut buf[(x, y)];
-                                if src_col < width {
-                                    *cell = original[src_col as usize].clone();
-                                } else {
-                                    let d = (src_col - width) as f32;
-                                    let fade = (d * 2.0 / width as f32).clamp(0.0, 1.0);
-                                    if fade > 0.0 {
-                                        if let Some(old) =
-                                            prev.as_ref().and_then(|pb| pb.cell((x, y)))
-                                        {
-                                            cell.set_char(
-                                                old.symbol().chars().next().unwrap_or(' '),
-                                            );
-                                            cell.set_fg(blend_color(bg, old.fg, fade));
-                                            cell.set_bg(blend_color(bg, old.bg, fade));
-                                        }
-                                    } else {
-                                        cell.reset();
-                                    }
-                                }
-                            }
-                        }
-                    },
-                )
-            }
-            TransitionKind::LinesCross => {
-                let prev = prev_buf.clone();
-
-                let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
-                let approx_lines = term_h as f32;
-                let duration_ms = LINE_DUR_MS + STAGGER_MS * (approx_lines - 1.0).max(0.0);
-                fx::effect_fn_buf(
-                    (),
-                    (duration_ms as u32, Interpolation::Linear),
-                    move |_state, ctx, buf| {
-                        let elapsed = ctx.alpha() * duration_ms;
-                        let area = ctx.area;
-                        let width = area.width as f32;
-
-                        for y in area.y..area.y + area.height {
-                            let line_index = (y - area.y) as f32;
-                            let line_start = line_index * STAGGER_MS;
-                            let local_alpha =
-                                ((elapsed - line_start) / LINE_DUR_MS).clamp(0.0, 1.0);
-                            let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
-                            let visible_cols = (local_alpha * width) as u16;
-                            let is_odd = (y - area.y) % 2 == 1;
-
-                            for x in area.x..area.x + area.width {
-                                let col_offset = x - area.x;
-                                let should_blank = if is_odd {
-                                    col_offset < area.width - visible_cols
-                                } else {
-                                    col_offset >= visible_cols
-                                };
-                                if should_blank {
-                                    let cell = &mut buf[(x, y)];
-                                    let d = if is_odd {
-                                        (area.width - visible_cols - 1 - col_offset) as f32
-                                    } else {
-                                        (col_offset - visible_cols) as f32
-                                    };
-                                    let fade = (d * 2.0 / area.width as f32).clamp(0.0, 1.0);
-                                    if fade > 0.0 {
-                                        if let Some(old) =
-                                            prev.as_ref().and_then(|pb| pb.cell((x, y)))
-                                        {
-                                            cell.set_char(
-                                                old.symbol().chars().next().unwrap_or(' '),
-                                            );
-                                            cell.set_fg(blend_color(bg, old.fg, fade));
-                                            cell.set_bg(blend_color(bg, old.bg, fade));
-                                        }
-                                    } else {
-                                        cell.reset();
-                                    }
-                                }
-                            }
-                        }
-                    },
-                )
-            }
-            TransitionKind::LinesRgb => {
-                let prev = prev_buf.clone();
-
-                let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
-                let approx_lines = term_h as f32;
-                let duration_ms = LINE_DUR_MS + STAGGER_MS * (approx_lines - 1.0).max(0.0);
-                fx::effect_fn_buf(
-                    (),
-                    (duration_ms as u32, Interpolation::Linear),
-                    move |_state, ctx, buf| {
-                        let elapsed = ctx.alpha() * duration_ms;
-                        let area = ctx.area;
-                        let width = area.width;
-
-                        for y in area.y..area.y + area.height {
-                            let line_index = (y - area.y) as f32;
-                            let line_start = line_index * STAGGER_MS;
-                            let local_alpha =
-                                ((elapsed - line_start) / LINE_DUR_MS).clamp(0.0, 1.0);
-                            let local_alpha = Interpolation::QuadOut.alpha(local_alpha);
-                            let shift = ((1.0 - local_alpha) * width as f32) as u16;
-
-                            let original: Vec<_> = (area.x..area.x + width)
-                                .map(|x| buf[(x, y)].clone())
-                                .collect();
-
-                            let color = anim_color(local_alpha);
-
-                            for x in area.x..area.x + width {
-                                let col = x - area.x;
-                                let cell = &mut buf[(x, y)];
-
-                                let (in_range, src_col) = {
-                                    let sc = col + shift;
-                                    if sc < width { (true, sc) } else { (false, 0) }
-                                };
-
-                                if in_range {
-                                    *cell = original[src_col as usize].clone();
-                                    if local_alpha < 1.0 {
-                                        cell.set_fg(color);
-                                    }
-                                } else {
-                                    let d = (col + shift - width) as f32;
-                                    let fade = (d * 2.0 / width as f32).clamp(0.0, 1.0);
-                                    if fade > 0.0 {
-                                        if let Some(old) =
-                                            prev.as_ref().and_then(|pb| pb.cell((x, y)))
-                                        {
-                                            cell.set_char(
-                                                old.symbol().chars().next().unwrap_or(' '),
-                                            );
-                                            cell.set_fg(blend_color(bg, old.fg, fade));
-                                            cell.set_bg(blend_color(bg, old.bg, fade));
-                                        }
-                                    } else {
-                                        cell.reset();
-                                    }
-                                }
-                            }
-                        }
-                    },
-                )
-            }
-            TransitionKind::SlideRgb => {
-                let prev = prev_buf.clone();
-                let band_width = 24_u16; // width of the RGB gradient band
-                fx::effect_fn_buf(
-                    (),
-                    (800, Interpolation::QuadOut),
-                    move |_state, ctx, buf| {
-                        let alpha = ctx.alpha();
-                        let area = ctx.area;
-                        let width = area.width as f32;
-                        let edge_col = (alpha * (width + band_width as f32)) as u16;
-
-                        for y in area.y..area.y + area.height {
-                            for x in area.x..area.x + area.width {
-                                let col_offset = x - area.x;
-                                if col_offset >= edge_col {
-                                    // Unrevealed: show old content
-                                    let cell = &mut buf[(x, y)];
-                                    if let Some(old) = prev.as_ref().and_then(|pb| pb.cell((x, y)))
-                                    {
-                                        *cell = old.clone();
-                                    }
-                                } else if col_offset + band_width >= edge_col {
-                                    // Inside the gradient band
-                                    let d = edge_col - col_offset; // 1..=band_width
-                                    let t = d as f32 / band_width as f32; // 0..1
-                                    let hue = t * 300.0; // 0..300 degrees
-                                    let color = hue_to_rgb(hue);
-                                    let cell = &mut buf[(x, y)];
-                                    cell.set_fg(color);
-                                }
-                                // else: revealed content, keep as-is
-                            }
-                        }
-                    },
-                )
-            }
-        })
+        let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
+        ratride::transition::create_transition(
+            &slide.transition,
+            bg,
+            prev_buf,
+            term_h,
+            slide.content.lines.len(),
+            LINE_DUR_MS,
+            STAGGER_MS,
+        )
     }
 
     fn run(mut self, mut terminal: DefaultTerminal) -> io::Result<()> {
+        // Enable mouse capture for clickable hyperlinks
+        crossterm::execute!(io::stdout(), EnableMouseCapture)?;
+
         terminal.draw(|_| {})?;
         self.effect = self.create_transition();
         self.last_frame = Instant::now();
@@ -511,6 +307,8 @@ impl App {
             }
             self.last_frame = Instant::now();
         }
+
+        crossterm::execute!(io::stdout(), DisableMouseCapture)?;
         Ok(())
     }
 
@@ -572,6 +370,14 @@ impl App {
         Ok(())
     }
 
+    /// Find the hyperlink URL at the given screen position, if any.
+    fn hyperlink_at(&self, x: u16, y: u16) -> Option<&str> {
+        self.pending_hyperlinks
+            .iter()
+            .find(|h| h.sx == x && h.sy == y)
+            .map(|h| h.url.as_str())
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
@@ -596,13 +402,21 @@ impl App {
         let scroll = self.scroll_offset();
 
         // Draw slide content via core render functions
-        let mut placements = render::draw_slide(slide, scroll, frame, main_area);
+        let (mut placements, hyperlinks) = render::draw_slide(slide, scroll, frame, main_area);
 
         // Render images via native backend
         for placement in &placements {
             self.draw_image(frame, placement);
         }
         self.pending_images.append(&mut placements);
+        self.pending_hyperlinks = hyperlinks;
+
+        // Highlight hovered hyperlink
+        render::highlight_hovered_hyperlinks(
+            &self.pending_hyperlinks,
+            self.hovered_url.as_deref(),
+            frame,
+        );
 
         // Apply transition effect
         if let Some(ref mut effect) = self.effect {
@@ -664,30 +478,56 @@ impl App {
 
     fn handle_events(&mut self) -> io::Result<()> {
         while event::poll(std::time::Duration::ZERO)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
+                    }
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
+                        KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => {
+                            self.next_page()
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => self.prev_page(),
+                        KeyCode::Char('j') | KeyCode::Down if self.can_scroll() => {
+                            *self.scroll_offset_mut() = self
+                                .scroll_offset()
+                                .saturating_add(1)
+                                .min(self.max_scroll());
+                        }
+                        KeyCode::Char('k') | KeyCode::Up if self.can_scroll() => {
+                            *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
+                        }
+                        KeyCode::Char('d') if self.can_scroll() => {
+                            *self.scroll_offset_mut() = self
+                                .scroll_offset()
+                                .saturating_add(10)
+                                .min(self.max_scroll());
+                        }
+                        KeyCode::Char('u') if self.can_scroll() => {
+                            *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
+                        }
+                        _ => {}
+                    }
                 }
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => self.next_page(),
-                    KeyCode::Left | KeyCode::Char('h') => self.prev_page(),
-                    KeyCode::Char('j') | KeyCode::Down if self.can_scroll() => {
-                        *self.scroll_offset_mut() =
-                            self.scroll_offset().saturating_add(1).min(self.max_scroll());
+                Event::Mouse(mouse) => {
+                    match mouse.kind {
+                        MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
+                            if let Some(url) = self.hyperlink_at(mouse.column, mouse.row) {
+                                let url = url.to_string();
+                                let _ = Command::new("open").arg(&url).spawn();
+                            }
+                        }
+                        MouseEventKind::Moved | MouseEventKind::Drag(..) => {
+                            self.mouse_pos = (mouse.column, mouse.row);
+                            self.hovered_url = self
+                                .hyperlink_at(mouse.column, mouse.row)
+                                .map(|s| s.to_string());
+                        }
+                        _ => {}
                     }
-                    KeyCode::Char('k') | KeyCode::Up if self.can_scroll() => {
-                        *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
-                    }
-                    KeyCode::Char('d') if self.can_scroll() => {
-                        *self.scroll_offset_mut() =
-                            self.scroll_offset().saturating_add(10).min(self.max_scroll());
-                    }
-                    KeyCode::Char('u') if self.can_scroll() => {
-                        *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
-                    }
-                    _ => {}
                 }
+                _ => {}
             }
         }
         Ok(())

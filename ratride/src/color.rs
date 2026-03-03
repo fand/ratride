@@ -46,16 +46,13 @@ pub fn anim_color(progress: f32) -> Color {
     };
     let blue = (80, 80, 255);
     let cyan = (100, 255, 255);
-    let magenta = (255, 100, 255);
     let white = (255, 255, 255);
     let red = (255, 100, 100);
 
     if progress < 0.8 {
         lerp_rgb(blue, cyan, progress * 1.25)
-    } else if progress < 0.85 {
-        lerp_rgb(cyan, magenta, progress * 20.0 - 16.0)
     } else if progress < 0.9 {
-        lerp_rgb(magenta, red, progress * 20.0 - 17.0)
+        lerp_rgb(cyan, red, progress * 10.0 - 8.0)
     } else {
         lerp_rgb(red, white, progress * 10.0 - 9.0)
     }

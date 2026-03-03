@@ -3,71 +3,234 @@ figlet_mobile: false
 ---
 <!-- layout: center -->
 <!-- figlet: ansi_shadow -->
-<!-- image_max_width: 40% -->
+<!-- image_max_width: 35% -->
 <!-- line_height: 1.2 -->
 
 ![](./ratride_logo_white.png)
 
 # Ratride
-
 A **Markdown slide tool** built with *Ratatui* + tachyonFX.
 
 Press `→` to go to next slide.
 
 ---
-<!-- transition: fade -->
+<!-- transition: slide-in -->
 
-## Features
+In Ratride, 
 
-- Parse Markdown and render in terminal
-- Scroll with `j`/`k` keys
-- **Bold**, *Italic*, ~~Strikethrough~~
-- `inline code` support
-- Page navigation with `←`/`→`
-- Per-slide layouts & transitions
+- You can write slides in Markdown
+- Show it both in terminal & on Web!
+- With animated transitions...
+
+---
+<!-- transition: dissolve -->
+<!-- layout: center -->
+<!-- figlet: doom -->
+
+# It works
+# on CLI
+# & Web
+
+---
+<!-- transition: lines-rgb -->
+<!-- layout: center -->
+<!-- figlet -->
+
+# with
+# Animation!
+
+---
+<!-- transition: sweep-in -->
+
+# Install
+
+Install from [crates.io]:
+
+```
+$ cargo install ratride
+```
+
+Or you can install the JS-binding from [npm]:
+
+```
+$ npm install ratride
+```
+
+```js
+import { run } from "ratride";
+
+const md = await fetch("./slides.md").then((r) => r.text());
+run(md);
+```
 
 ---
 <!-- transition: slide-in -->
 
-## Markdown Demo
+## Features
 
-### Heading 3
-#### Heading 4
-##### Heading 5
-###### Heading 6
+- Basic Markdown features
+- Navigation with `←→↓↑` (`hjkl`) keys 
+- Catppuccin themes
+- tachyonFX transitions
+- Figlet headers
+- Web export
 
-- Unordered list
+---
+<!-- transition: slide-in -->
+
+# Markdown slides
+
+You can write slides in Markdown, as always.
+Slide separator is `---`.
+
+## List
+
+- list 1
+- list 2 
   - Nested item
     - Deep nested
-- Top level
+- Foo
 
 1. First
 2. Second
 3. Third
 
-___
+## Text styling
 
-> Blockquote: **bold**, *italic*, `code`, [link](https://github.com/fand/ratride)
+- **Bold**, *Italic*, ~~Strikethrough~~
+- `inline code` support
+- [Link](https://github.com/fand/ratride)
+
+> Blockquote
 
 ---
 
+## Syntax Highlight
+
+Of course you can!
+
+``` js
+const Counter = () => {
+  const name = useName();  
+  return <h1>Hello {name}</h1>;  
+};
+```
+
+```rust
+fn main() {
+    let name = use_name();
+    println!("Hello {}", name);
+}
+```
+
+---
+<!-- image_max_width: 50% -->
+
+## Image support
+
+Ratride supports image output for iTerm2 / Kitty protocols.
+
+![](./demo.png)
+
+This image is displayed with `<!-- image_max_width: 80% -->` slide option.
+
+---
+
+## Scrollable Content
+
+Scroll: `↓`/`↑` (or `j`/`k`). Half-page: `d`/`u`.
+
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- and I repeat
+- This slide is long
+- so long
+- really long
+- truly long, we need to scroll
+- We can scroll with arrow keys
+- and also with j/k keys
+- cuz ratride is a tui app
+- even it works on the web
+- we still need to be able to navigate with keys
+- This is the end
+
+---
+
+## Options
+
+Set global options via YAML frontmatter:
+
+```yaml
+---
+theme: latte
+transition: fade
+figlet: slant
+image_max_width: 80%
+---
+```
+
+Or use HTML comment to set per-slide options:
+
+```html
+<!-- figlet: slant -->
+<!-- layout: center -->
+<!-- theme: latte -->
+<!-- bg_fill -->
+```
+
+---
+<!-- figlet: small -->
+
 ## Themes
 
-4 Catppuccin themes:
+Ratride ships with Catppuccin themes:
 
 - **mocha** — dark (default)
 - **macchiato** — dark
 - **frappe** — dark
 - **latte** — light
 
-Try: `ratride slides.md --theme latte`
+You can set the theme with `--theme latte` option, or in the frontmatter:
+
+```md
+---
+theme: macchiato
+---
+```
 
 ---
 <!-- theme: macchiato -->
 <!-- transition: fade -->
 <!-- bg_fill -->
 
-## Macchiato
+### Macchiato
 
 This slide uses **Catppuccin Macchiato** theme via `<!-- theme: macchiato -->`.
 
@@ -87,7 +250,7 @@ fn main() {
 <!-- transition: fade -->
 <!-- bg_fill -->
 
-## Frappé
+### Frappé
 
 This slide uses **Catppuccin Frappé** theme via `<!-- theme: frappe -->`.
 
@@ -107,7 +270,7 @@ fn main() {
 <!-- transition: fade -->
 <!-- bg_fill -->
 
-## Latte
+### Latte
 
 This slide uses **Catppuccin Latte** theme via `<!-- theme: latte -->`.
 
@@ -123,12 +286,21 @@ fn main() {
 ```
 
 ---
+# Layout
 
-## Image support
+For each slide, you can choose the layout from below:
 
-Ratride supports image output for iTerm2 / Kitty protocols.
+- normal
+- center
+- two-column
 
-![](./demo.png)
+
+---
+<!-- layout: center -->
+
+You can center your contents,
+
+with `<!-- layout: center -->`...
 
 ---
 
@@ -137,145 +309,64 @@ Ratride supports image output for iTerm2 / Kitty protocols.
 
 ## Left Column
 
-- Item A
-- Item B
-- Item C
+Or `two-column` layout, with `<!-- layout: two-column -->`.
+
+- Foo
+- Foo
+- Foo
 
 |||
 
 ## Right Column
 
-1. First
-2. Second
-3. Third
+1. Bar
+2. Bar
+3. Bar
 
 ---
-
-<!-- transition: coalesce -->
-
-## Code Block
-
-```rust
-fn main() {
-    println!("Hello, world!");
-}
-```
-
-> This is a blockquote.
-
-```jsx
-function test() {
-  const name = "world";
-  console.log(`Hello ${}!`);
-  return <div>{`Hello ${name}`}</div>;
-}
-```
-
----
-
-## Frontmatter
-
-Set global defaults via YAML frontmatter:
-
-```yaml
----
-theme: latte
-layout: center
-transition: fade
-figlet: slant
-image_max_width: 80%
----
-```
-
-Per-slide HTML comments override frontmatter defaults.
-
----
-<!-- figlet:slant -->
 <!-- layout: center -->
-<!-- line_height: 1.2 -->
+<!-- figlet -->
 
-# Slant
+# Figlet
 
-`<!-- figlet:slant -->` renders headings in custom figlet fonts.
-
-Fonts depend on your `figlet` installation.
+With `figlet` option, turn the headers into ascii-art banners.
 
 ---
+<!-- figlet: smslant -->
 
-## Scrollable Content
+## Figlet fonts
 
-Scroll: `↓`/`↑` or `j`/`k`. Half-page: `d`/`u`.
+You can use figlet fonts like `<!-- figlet: slant -->`.
+The default is **ANSI Shadow**.
 
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
-- This slide is long
-- so long
-- really long
-- truly long, we need to scroll
-- We can scroll with arrow keys
-- and also with j/k keys
-- cuz ratride is a tui app
-- even it works on the web
-- we still need to be able to navigate with keys
-- and I repeat
+The list of supported fonts:
+
+- ANSI Shadow
+- standard
+- slant
+- big
+- small
+- mini
+- slant
+- smslant
+- block
+- doom
+- epic
+- graffiti
+- fraktur
+- roman
+- gothic
+- speed
+- script
+
+---
+<!-- layout: center -->
+<!-- figlet -->
+<!-- transition: lines-rgb -->
+
+# Transitions
+
+Ratride supports tachyonFX-based transitions.
 
 ---
 
@@ -295,14 +386,22 @@ Content fades in from the background color.
 
 This slide uses the **lines** transition.
 
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
-Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
+- In `lines` transition, Each line is revealed left-to-right with staggered timing.
 
 ---
 
@@ -311,14 +410,23 @@ Each line is revealed left-to-right with staggered timing.
 ## Lines-Cross Transition
 
 This slide uses the **lines-cross** transition.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
-Even lines reveal left-to-right, odd lines right-to-left.
+
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
+- In `lines-cross`, Even lines reveal left-to-right, odd lines right-to-left.
 
 ---
 
@@ -328,7 +436,22 @@ Even lines reveal left-to-right, odd lines right-to-left.
 
 This slide uses the **slide-rgb** transition.
 
-A color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
+- In `slide-rgb`, color-cycling leading edge sweeps from left to right.
 
 ---
 
@@ -338,20 +461,49 @@ A color-cycling leading edge sweeps from left to right.
 
 This slide uses the **lines-rgb** transition.
 
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
-Just like `Lines` transition, but with color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
+- Just like `Lines` transition, but with colorama-like color rotating effect.
 
 
 ---
+<!-- transition: slide-in -->
+<!-- theme: latte -->
+<!-- bg_fill -->
 
+# Web export
+
+Ratride can export the slides to HTML, just like you see me right now!
+
+You can export the slide to HTML:
+
+```
+$ ratride slide.md --export OUT_DIR
+```
+
+Ratride also comes with a live-reload server:
+
+```
+$ ratride slide.md --serve
+```
+
+---
 <!-- layout: center -->
 <!-- transition: dissolve -->
+<!-- figlet: smslant -->
 
 # Thank you!
 

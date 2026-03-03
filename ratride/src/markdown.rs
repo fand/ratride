@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span, Text};
 use syntect::parsing::SyntaxSet;
 
 /// Default line-height multiplier when not specified in frontmatter or directives.
-pub const DEFAULT_LINE_HEIGHT: f64 = 1.5;
+pub const DEFAULT_LINE_HEIGHT: f64 = 1.2;
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
@@ -370,7 +370,12 @@ enum ListKind {
 }
 
 impl<'a> MdConverter<'a> {
-    fn new(theme: Theme, frontmatter: &Frontmatter, figlet_fn: Option<&'a FigletFn>, is_mobile: bool) -> Self {
+    fn new(
+        theme: Theme,
+        frontmatter: &Frontmatter,
+        figlet_fn: Option<&'a FigletFn>,
+        is_mobile: bool,
+    ) -> Self {
         let base_style = Style::default().fg(theme.fg);
         let syntect_theme = theme.syntect_theme();
         let default_theme = theme.clone();
@@ -611,7 +616,9 @@ impl<'a> MdConverter<'a> {
                 };
                 self.semantic_heading_line = self.lines.len();
                 let has_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
-                let figlet_mobile = self.pending_figlet_mobile.unwrap_or(self.default_figlet_mobile);
+                let figlet_mobile = self
+                    .pending_figlet_mobile
+                    .unwrap_or(self.default_figlet_mobile);
                 let use_figlet = has_figlet && !(self.is_mobile && !figlet_mobile);
                 if use_figlet {
                     // Apply default figlet if no per-slide directive
