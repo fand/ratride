@@ -1,5 +1,6 @@
 <!-- layout: center -->
 <!-- figlet -->
+<!-- figlet_color: ff0000,ffff00,00ffff -->
 
 # Hello
 

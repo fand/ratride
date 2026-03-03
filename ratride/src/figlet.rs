@@ -172,3 +172,112 @@ pub fn builtin_fonts() -> &'static [&'static str] {
         "script",
     ]
 }
+
+/// Render text using figrat with color. Returns ANSI-colored string.
+///
+/// `color_spec` is the color argument (e.g. `"ff0000,00ffff x"`).
+pub fn render_figrat(text: &str, font: Option<&str>, color_spec: &str) -> Option<String> {
+    let font_data = load_font_data(font)?;
+    let fig = figrat::font::parser::FigFont::parse(&font_data).ok()?;
+    let canvas = figrat::render::layout::render(&fig, text, None);
+
+    let (gradient, direction) = parse_color_spec(color_spec);
+    let rules = vec![figrat::color::colorize::ColorRule {
+        chars: None,
+        gradient,
+        direction,
+    }];
+    let colored = figrat::color::colorize::colorize(&canvas, &rules);
+    Some(figrat::output::ansi::render_ansi(
+        &canvas,
+        &colored,
+        fig.header.hardblank,
+    ))
+}
+
+/// Load .flf font data by name. Checks built-in fonts first, then system paths.
+fn load_font_data(font: Option<&str>) -> Option<String> {
+    let font_name = font.unwrap_or("ANSI Shadow");
+    // Check built-in fonts first
+    let builtin = match font_name {
+        "ANSI Shadow" | "ansi_shadow" | "ansi-shadow" => Some(ANSI_SHADOW_FLF),
+        "standard" => Some(STANDARD_FLF),
+        "big" => Some(BIG_FLF),
+        "small" => Some(SMALL_FLF),
+        "mini" => Some(MINI_FLF),
+        "slant" => Some(SLANT_FLF),
+        "smslant" => Some(SMSLANT_FLF),
+        "block" => Some(BLOCK_FLF),
+        "doom" => Some(DOOM_FLF),
+        "epic" => Some(EPIC_FLF),
+        "graffiti" => Some(GRAFFITI_FLF),
+        "fraktur" => Some(FRAKTUR_FLF),
+        "roman" => Some(ROMAN_FLF),
+        "gothic" => Some(GOTHIC_FLF),
+        "speed" => Some(SPEED_FLF),
+        "script" => Some(SCRIPT_FLF),
+        _ => None,
+    };
+    if let Some(data) = builtin {
+        return Some(data.to_string());
+    }
+    // Try common system figlet font directories
+    for dir in &[
+        "/usr/share/figlet",
+        "/usr/share/figlet/fonts",
+        "/usr/local/share/figlet",
+        "/usr/local/share/figlet/fonts",
+    ] {
+        let path = format!("{}/{}.flf", dir, font_name);
+        if let Ok(data) = std::fs::read_to_string(&path) {
+            return Some(data);
+        }
+    }
+    // Try the font name as a direct path
+    std::fs::read_to_string(font_name).ok()
+}
+
+fn parse_hex(s: &str) -> figrat::color::palette::Rgba {
+    let s = s.trim_start_matches('#');
+    if s.len() < 6 {
+        return figrat::color::palette::Rgba::rgb(255, 255, 255);
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).unwrap_or(255);
+    let g = u8::from_str_radix(&s[2..4], 16).unwrap_or(255);
+    let b = u8::from_str_radix(&s[4..6], 16).unwrap_or(255);
+    figrat::color::palette::Rgba::rgb(r, g, b)
+}
+
+fn parse_color_spec(
+    s: &str,
+) -> (
+    figrat::color::gradient::Gradient,
+    figrat::color::colorize::GradientDirection,
+) {
+    use figrat::color::colorize::GradientDirection;
+    use figrat::color::gradient::Gradient;
+    use figrat::color::palette::Rgba;
+
+    let tokens: Vec<&str> = s.split_whitespace().collect();
+    if tokens.is_empty() {
+        return (
+            Gradient::solid(Rgba::rgb(255, 255, 255)),
+            GradientDirection::Horizontal,
+        );
+    }
+
+    let (color_str, direction) = match tokens.last() {
+        Some(&"y") => (
+            tokens[..tokens.len() - 1].join(" "),
+            GradientDirection::Vertical,
+        ),
+        Some(&"x") => (
+            tokens[..tokens.len() - 1].join(" "),
+            GradientDirection::Horizontal,
+        ),
+        _ => (tokens.join(" "), GradientDirection::Horizontal),
+    };
+
+    let colors: Vec<Rgba> = color_str.split(',').map(|c| parse_hex(c.trim())).collect();
+    (Gradient::multi(&colors), direction)
+}
