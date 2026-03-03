@@ -1,4 +1,4 @@
-use crate::markdown::{Slide, SlideLayout};
+use crate::markdown::{HeaderItem, Slide, SlideLayout};
 use crate::theme::Theme;
 use ratatui::{
     Frame,
@@ -201,8 +201,9 @@ pub fn draw_status_bar_with_options(
 
 /// Draw header items at the top-right of the area, overlaying the content.
 /// Items are displayed horizontally, separated by " │ ".
+/// Items with a URL are rendered in the theme's link color.
 pub fn draw_header(
-    header: &[String],
+    header: &[HeaderItem],
     frame: &mut Frame,
     area: Rect,
     theme: &Theme,
@@ -216,6 +217,9 @@ pub fn draw_header(
     let style = ratatui::style::Style::default()
         .bg(theme.surface)
         .fg(theme.fg);
+    let link_style = ratatui::style::Style::default()
+        .bg(theme.surface)
+        .fg(theme.link);
     let sep_style = ratatui::style::Style::default()
         .bg(theme.surface)
         .fg(theme.list_bullet);
@@ -224,7 +228,8 @@ pub fn draw_header(
         if i > 0 {
             spans.push(ratatui::text::Span::styled(separator, sep_style));
         }
-        spans.push(ratatui::text::Span::styled(item.clone(), style));
+        let item_style = if item.url.is_some() { link_style } else { style };
+        spans.push(ratatui::text::Span::styled(item.text.clone(), item_style));
     }
 
     // Add padding
