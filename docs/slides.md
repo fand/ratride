@@ -5,6 +5,7 @@ figlet_mobile: false
 <!-- figlet: ansi_shadow -->
 <!-- image_max_width: 40% -->
 <!-- line_height: 1.2 -->
+<!-- figlet_color: ff6666,ff66ff,33ffff -->
 
 ![](./ratride_logo_white.png)
 
@@ -190,6 +191,16 @@ image_max_width: 80%
 Per-slide HTML comments override frontmatter defaults.
 
 ---
+<!-- figlet -->
+<!-- layout: center -->
+<!-- line_height: 1.2 -->
+
+# Figlet
+
+`<!-- figlet -->` option displays the header as ascii-art.
+
+
+---
 <!-- figlet:slant -->
 <!-- layout: center -->
 <!-- line_height: 1.2 -->
@@ -198,7 +209,6 @@ Per-slide HTML comments override frontmatter defaults.
 
 `<!-- figlet:slant -->` renders headings in custom figlet fonts.
 
-Fonts depend on your `figlet` installation.
 
 ---
 
