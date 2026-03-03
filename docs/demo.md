@@ -1,7 +1,7 @@
 ---
 figlet_mobile: false
 header:
-  - [GitHub](https://github.com/fand)
+  - [GitHub](https://github.com/fand/ratride)
 ---
 <!-- layout: center -->
 <!-- figlet: ansi_shadow -->
