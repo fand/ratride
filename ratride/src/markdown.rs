@@ -7,6 +7,32 @@ use syntect::parsing::SyntaxSet;
 /// Default line-height multiplier when not specified in frontmatter or directives.
 pub const DEFAULT_LINE_HEIGHT: f64 = 1.2;
 
+/// A single header item, optionally linking to a URL.
+#[derive(Clone, Debug)]
+pub struct HeaderItem {
+    pub text: String,
+    pub url: Option<String>,
+}
+
+/// Parse a header item string, extracting `[text](url)` link syntax.
+fn parse_header_item(s: &str) -> HeaderItem {
+    let s = s.trim();
+    if let Some(rest) = s.strip_prefix('[') {
+        if let Some((text, rest)) = rest.split_once("](") {
+            if let Some(url) = rest.strip_suffix(')') {
+                return HeaderItem {
+                    text: text.to_string(),
+                    url: Some(url.to_string()),
+                };
+            }
+        }
+    }
+    HeaderItem {
+        text: s.to_string(),
+        url: None,
+    }
+}
+
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
 pub struct Frontmatter {
@@ -20,6 +46,8 @@ pub struct Frontmatter {
     pub bg_fill: Option<bool>,
     /// Whether to enable figlet on mobile. Default: false (disabled on mobile).
     pub figlet_mobile: Option<bool>,
+    /// Header items displayed at top-right, overlaying the content area.
+    pub header: Option<Vec<HeaderItem>>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -65,12 +93,34 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
     };
 
     let mut fm = Frontmatter::default();
+    // Track whether we're collecting YAML list items for `header`
+    let mut in_header_list = false;
+    let mut header_items: Vec<HeaderItem> = Vec::new();
+
     for line in yaml_block.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        if let Some((key, value)) = line.split_once(':') {
+
+        // Check for YAML list item (e.g. "- item" or "  - [text](url)")
+        if in_header_list {
+            if let Some(item_text) = trimmed.strip_prefix("- ") {
+                header_items.push(parse_header_item(item_text));
+                continue;
+            } else if trimmed.starts_with('-') && trimmed.len() == 1 {
+                // bare `-` with no content, skip
+                continue;
+            } else {
+                // End of list
+                in_header_list = false;
+                if !header_items.is_empty() {
+                    fm.header = Some(std::mem::take(&mut header_items));
+                }
+            }
+        }
+
+        if let Some((key, value)) = trimmed.split_once(':') {
             let key = key.trim();
             let value = value.trim();
             match key {
@@ -121,9 +171,31 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 "figlet_mobile" => {
                     fm.figlet_mobile = Some(value == "true");
                 }
+                "header" => {
+                    if value.is_empty() {
+                        // Empty value means YAML list follows on next lines
+                        in_header_list = true;
+                        header_items.clear();
+                    } else {
+                        // Inline pipe-separated format: header: item1 | item2
+                        let items: Vec<HeaderItem> = value
+                            .split('|')
+                            .map(|s| parse_header_item(s))
+                            .filter(|item| !item.text.is_empty())
+                            .collect();
+                        if !items.is_empty() {
+                            fm.header = Some(items);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
+    }
+
+    // Flush any remaining list items
+    if in_header_list && !header_items.is_empty() {
+        fm.header = Some(header_items);
     }
 
     (fm, body)
@@ -202,6 +274,8 @@ pub struct Slide {
     pub line_height: f64,
     /// Whether to fill entire screen with theme bg color.
     pub bg_fill: bool,
+    /// Header items displayed at top-right, overlaying the content area.
+    pub header: Vec<HeaderItem>,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -248,6 +322,7 @@ enum CommentDirective {
     LineHeight(f64),
     Theme(Theme),
     BgFill(bool),
+    Header(Vec<HeaderItem>),
 }
 
 fn parse_comment(html: &str) -> Option<CommentDirective> {
@@ -308,6 +383,16 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     if let Some(value) = inner.strip_prefix("bg_fill:") {
         return Some(CommentDirective::BgFill(value.trim() == "true"));
     }
+    if let Some(value) = inner.strip_prefix("header:") {
+        let items: Vec<HeaderItem> = value
+            .split('|')
+            .map(|s| parse_header_item(s))
+            .filter(|item| !item.text.is_empty())
+            .collect();
+        if !items.is_empty() {
+            return Some(CommentDirective::Header(items));
+        }
+    }
     None
 }
 
@@ -361,6 +446,9 @@ struct MdConverter<'a> {
     is_mobile: bool,
     default_figlet_mobile: bool,
     pending_figlet_mobile: Option<bool>,
+    // Header
+    default_header: Option<Vec<HeaderItem>>,
+    pending_header: Option<Vec<HeaderItem>>,
 }
 
 #[derive(Clone)]
@@ -423,6 +511,8 @@ impl<'a> MdConverter<'a> {
             is_mobile,
             default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(false),
             pending_figlet_mobile: None,
+            default_header: frontmatter.header.clone(),
+            pending_header: None,
         }
     }
 
@@ -498,6 +588,7 @@ impl<'a> MdConverter<'a> {
                     theme: Theme::default(),
                     line_height: DEFAULT_LINE_HEIGHT,
                     bg_fill: false,
+                    header: Vec::new(),
                 },
             };
             slide.images = images;
@@ -514,6 +605,11 @@ impl<'a> MdConverter<'a> {
                 .take()
                 .or(self.default_bg_fill)
                 .unwrap_or(false);
+            slide.header = self
+                .pending_header
+                .take()
+                .or_else(|| self.default_header.clone())
+                .unwrap_or_default();
             self.slides.push(slide);
         }
         // Reset theme to default for next slide
@@ -582,6 +678,9 @@ impl<'a> MdConverter<'a> {
                 }
                 Some(CommentDirective::BgFill(v)) => {
                     self.pending_bg_fill = Some(v);
+                }
+                Some(CommentDirective::Header(items)) => {
+                    self.pending_header = Some(items);
                 }
                 None => {}
             },
@@ -971,6 +1070,11 @@ impl<'a> MdConverter<'a> {
                     .take()
                     .or(self.default_bg_fill)
                     .unwrap_or(false),
+                header: self
+                    .pending_header
+                    .take()
+                    .or_else(|| self.default_header.clone())
+                    .unwrap_or_default(),
             });
         }
         self.slides
@@ -1009,6 +1113,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 theme: Theme::default(),
                 line_height: 1.2,
                 bg_fill: false,
+                header: Vec::new(),
             }
         }
         None => Slide {
@@ -1021,6 +1126,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             theme: Theme::default(),
             line_height: 1.2,
             bg_fill: false,
+            header: Vec::new(),
         },
     }
 }

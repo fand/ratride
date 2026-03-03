@@ -1,4 +1,4 @@
-use ratride::markdown::SemanticElement;
+use ratride::markdown::{HeaderItem, SemanticElement};
 use ratatui::text::Text;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlElement};
@@ -127,6 +127,64 @@ impl DomOverlay {
                     let _ = self.container.append_child(&a);
                 }
             }
+        }
+    }
+
+    /// Add clickable overlays for header links.
+    /// `header_x` / `header_y` are the pixel coordinates of the header area origin.
+    pub fn update_header_links(
+        &self,
+        header: &[HeaderItem],
+        header_x: f64,
+        header_y: f64,
+        cell_width: f64,
+        cell_height: f64,
+        area_width: u16,
+    ) {
+        if header.is_empty() {
+            return;
+        }
+
+        let separator = " │ ";
+        // Compute total character width (mirrors render::draw_header)
+        let mut total_chars: usize = 1; // leading padding " "
+        for (i, item) in header.iter().enumerate() {
+            if i > 0 {
+                total_chars += separator.len();
+            }
+            total_chars += item.text.len();
+        }
+        total_chars += 1; // trailing padding " "
+
+        // Header is right-aligned with 1-cell margin from right edge
+        let start_x = area_width.saturating_sub(total_chars as u16 + 1);
+
+        let mut col: usize = 1; // skip leading padding
+        for (i, item) in header.iter().enumerate() {
+            if i > 0 {
+                col += separator.len();
+            }
+            if let Some(url) = &item.url {
+                let px_x = header_x + (start_x as usize + col) as f64 * cell_width;
+                let px_y = header_y;
+                let px_w = item.text.len() as f64 * cell_width;
+                let px_h = cell_height;
+
+                let a = self.document.create_element("a").expect("create anchor");
+                let _ = a.set_attribute("href", url);
+                let _ = a.set_attribute("target", "_blank");
+                let _ = a.set_attribute("rel", "noopener noreferrer");
+                a.set_text_content(Some(&item.text));
+                let style = format!(
+                    "position:absolute;left:{px_x}px;top:{px_y}px;\
+                     width:{px_w}px;height:{px_h}px;\
+                     color:transparent;pointer-events:auto;cursor:pointer;\
+                     text-decoration:none;font-size:0;display:block"
+                );
+                let _ = a.set_attribute("style", &style);
+                let _ = self.container.append_child(&a);
+            }
+            col += item.text.len();
         }
     }
 }

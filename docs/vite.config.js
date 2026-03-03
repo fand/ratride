@@ -2,6 +2,9 @@ import { defineConfig } from "vite";
 import path from "path";
 
 export default defineConfig({
+  resolve: {
+    preserveSymlinks: true,
+  },
   server: {
     fs: {
       allow: [path.resolve(__dirname, "..")],

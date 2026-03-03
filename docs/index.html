@@ -24,7 +24,7 @@
             import { run } from "ratride";
 
             async function main() {
-                const md = await fetch("./slides.md").then((r) => r.text());
+                const md = await fetch("./demo.md").then((r) => r.text());
                 run(md);
             }
 
