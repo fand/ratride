@@ -328,6 +328,55 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     None
 }
 
+/// Parse a single line containing ANSI true-color escape codes (`\x1b[38;2;R;G;Bm`
+/// and `\x1b[0m`) into a ratatui `Line` with per-segment colors.
+fn parse_ansi_line(input: &str, base_style: Style) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut current_style = base_style;
+    let mut buf = String::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Flush accumulated text
+            if !buf.is_empty() {
+                spans.push(Span::styled(std::mem::take(&mut buf), current_style));
+            }
+            // Parse escape sequence: expect '[' then params then 'm'
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                let mut seq = String::new();
+                for c in chars.by_ref() {
+                    if c == 'm' {
+                        break;
+                    }
+                    seq.push(c);
+                }
+                if seq == "0" {
+                    current_style = base_style;
+                } else if seq.starts_with("38;2;") {
+                    let parts: Vec<&str> = seq.splitn(5, ';').collect();
+                    if parts.len() == 5 {
+                        if let (Ok(r), Ok(g), Ok(b)) = (
+                            parts[2].parse::<u8>(),
+                            parts[3].parse::<u8>(),
+                            parts[4].parse::<u8>(),
+                        ) {
+                            current_style = base_style.fg(Color::Rgb(r, g, b));
+                        }
+                    }
+                }
+            }
+        } else {
+            buf.push(ch);
+        }
+    }
+    if !buf.is_empty() {
+        spans.push(Span::styled(buf, current_style));
+    }
+    Line::from(spans)
+}
+
 struct MdConverter<'a> {
     theme: Theme,
     slides: Vec<Slide>,
@@ -943,6 +992,7 @@ impl<'a> MdConverter<'a> {
             .pending_figlet_color
             .as_deref()
             .or(self.default_figlet_color.as_deref());
+        let has_color = color.is_some();
         let art = self.figlet_fn.and_then(|f| f(text, font, color));
 
         let Some(art) = art else {
@@ -957,9 +1007,16 @@ impl<'a> MdConverter<'a> {
             .iter()
             .rposition(|l| l.chars().any(|c| !c.is_whitespace()))
             .map_or(0, |i| i + 1);
-        for line in &art_lines[..end] {
-            self.lines
-                .push(Line::from(Span::styled(line.to_string(), style)));
+        if has_color {
+            // Parse ANSI escape codes into colored Spans
+            for line in &art_lines[..end] {
+                self.lines.push(parse_ansi_line(line, style));
+            }
+        } else {
+            for line in &art_lines[..end] {
+                self.lines
+                    .push(Line::from(Span::styled(line.to_string(), style)));
+            }
         }
     }
 
