@@ -20,6 +20,9 @@ pub struct Frontmatter {
     pub bg_fill: Option<bool>,
     /// Whether to enable figlet on mobile. Default: false (disabled on mobile).
     pub figlet_mobile: Option<bool>,
+    /// Color argument for figrat. When set, `figrat --color "<value>"` is used
+    /// instead of `figlet`.
+    pub figlet_color: Option<String>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -121,6 +124,11 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 "figlet_mobile" => {
                     fm.figlet_mobile = Some(value == "true");
                 }
+                "figlet_color" => {
+                    if !value.is_empty() {
+                        fm.figlet_color = Some(value.to_string());
+                    }
+                }
                 _ => {}
             }
         }
@@ -207,8 +215,10 @@ pub struct Slide {
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
 
 /// Parse markdown into slides split by `---` (horizontal rule).
-/// Figlet rendering callback: `(text, font_name) -> Option<ascii_art>`.
-pub type FigletFn = dyn Fn(&str, Option<&str>) -> Option<String>;
+/// Figlet rendering callback: `(text, font_name, color) -> Option<ascii_art>`.
+/// When `color` is `Some(...)`, the renderer should use `figrat --color` instead
+/// of plain `figlet`.
+pub type FigletFn = dyn Fn(&str, Option<&str>, Option<&str>) -> Option<String>;
 
 pub fn parse_slides(
     input: &str,
@@ -244,6 +254,7 @@ enum CommentDirective {
     Transition(TransitionKind),
     Figlet(Option<String>),
     FigletMobile(bool),
+    FigletColor(String),
     ImageMaxWidth(f64),
     LineHeight(f64),
     Theme(Theme),
@@ -285,6 +296,12 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     }
     if let Some(value) = inner.strip_prefix("figlet_mobile:") {
         return Some(CommentDirective::FigletMobile(value.trim() == "true"));
+    }
+    if let Some(value) = inner.strip_prefix("figlet_color:") {
+        let value = value.trim();
+        if !value.is_empty() {
+            return Some(CommentDirective::FigletColor(value.to_string()));
+        }
     }
     if let Some(value) = inner.strip_prefix("image_max_width:") {
         let value = value.trim().trim_end_matches('%');
@@ -361,6 +378,9 @@ struct MdConverter<'a> {
     is_mobile: bool,
     default_figlet_mobile: bool,
     pending_figlet_mobile: Option<bool>,
+    // Figrat color
+    default_figlet_color: Option<String>,
+    pending_figlet_color: Option<String>,
 }
 
 #[derive(Clone)]
@@ -418,6 +438,8 @@ impl<'a> MdConverter<'a> {
             is_mobile,
             default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(false),
             pending_figlet_mobile: None,
+            default_figlet_color: frontmatter.figlet_color.clone(),
+            pending_figlet_color: None,
         }
     }
 
@@ -469,6 +491,7 @@ impl<'a> MdConverter<'a> {
         let images = std::mem::take(&mut self.images);
         self.pending_figlet = None;
         self.pending_figlet_mobile = None;
+        self.pending_figlet_color = None;
         let transition = self
             .pending_transition
             .take()
@@ -563,6 +586,9 @@ impl<'a> MdConverter<'a> {
                 }
                 Some(CommentDirective::FigletMobile(enabled)) => {
                     self.pending_figlet_mobile = Some(enabled);
+                }
+                Some(CommentDirective::FigletColor(color)) => {
+                    self.pending_figlet_color = Some(color);
                 }
                 Some(CommentDirective::ImageMaxWidth(pct)) => {
                     self.pending_image_max_width = Some(pct);
@@ -913,7 +939,11 @@ impl<'a> MdConverter<'a> {
     fn render_figlet_heading(&mut self, text: &str, style: Style) {
         let style = style.remove_modifier(Modifier::UNDERLINED);
         let font = self.pending_figlet.as_ref().and_then(|f| f.as_deref());
-        let art = self.figlet_fn.and_then(|f| f(text, font));
+        let color = self
+            .pending_figlet_color
+            .as_deref()
+            .or(self.default_figlet_color.as_deref());
+        let art = self.figlet_fn.and_then(|f| f(text, font, color));
 
         let Some(art) = art else {
             self.current_spans

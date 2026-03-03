@@ -73,7 +73,29 @@ struct App {
 
 impl App {
     fn new(markdown: &str, base_dir: &Path, theme: Theme, frontmatter: &Frontmatter) -> Self {
-        let figlet_fn = |text: &str, font: Option<&str>| -> Option<String> {
+        let figlet_fn = |text: &str, font: Option<&str>, color: Option<&str>| -> Option<String> {
+            if let Some(color) = color {
+                // Use figrat with --color when color is specified
+                let mut cmd = Command::new("figrat");
+                if let Some(font) = font {
+                    cmd.args(["-f", font]);
+                }
+                cmd.args(["--color", color]);
+                return cmd
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .and_then(|mut child| {
+                        if let Some(mut stdin) = child.stdin.take() {
+                            let _ = stdin.write_all(text.as_bytes());
+                        }
+                        child.wait_with_output()
+                    })
+                    .ok()
+                    .filter(|out| out.status.success())
+                    .and_then(|out| String::from_utf8(out.stdout).ok());
+            }
             // Try built-in fonts first
             if let Some(result) = ratride::figlet::render_builtin(text, font) {
                 return Some(result);
