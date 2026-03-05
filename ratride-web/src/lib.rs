@@ -129,4 +129,29 @@ impl RatRide {
 
         RatRide { app }
     }
+
+    #[wasm_bindgen]
+    pub fn next_page(&self) {
+        self.app.borrow_mut().next_page();
+    }
+
+    #[wasm_bindgen]
+    pub fn prev_page(&self) {
+        self.app.borrow_mut().prev_page();
+    }
+
+    #[wasm_bindgen]
+    pub fn scroll_down(&self, lines: u16) {
+        self.app.borrow_mut().scroll_down(lines);
+    }
+
+    #[wasm_bindgen]
+    pub fn scroll_up(&self, lines: u16) {
+        self.app.borrow_mut().scroll_up(lines);
+    }
+
+    #[wasm_bindgen]
+    pub fn cell_height(&self) -> f64 {
+        self.app.borrow().cell_height()
+    }
 }

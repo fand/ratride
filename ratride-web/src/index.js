@@ -80,6 +80,74 @@ export async function run(md, config = {}) {
     fontSize,
   );
 
+  // --- Touch / swipe navigation ---
+  canvas.style.touchAction = "none";
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchLastY = 0;
+  let swipeAxis = null; // null | "horizontal" | "vertical"
+  let accumulatedScrollY = 0;
+  const AXIS_LOCK_THRESHOLD = 10; // px before axis is decided
+  const SWIPE_THRESHOLD = 50; // px for horizontal page change
+
+  canvas.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchLastY = t.clientY;
+    swipeAxis = null;
+    accumulatedScrollY = 0;
+  }, { passive: false });
+
+  canvas.addEventListener("touchmove", (e) => {
+    if (e.touches.length !== 1) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+
+    // Lock axis once movement exceeds threshold
+    if (swipeAxis === null) {
+      if (Math.abs(dx) > AXIS_LOCK_THRESHOLD || Math.abs(dy) > AXIS_LOCK_THRESHOLD) {
+        swipeAxis = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+      } else {
+        return;
+      }
+    }
+
+    if (swipeAxis === "vertical") {
+      const deltaY = touchLastY - t.clientY; // positive = finger moves up = scroll down
+      touchLastY = t.clientY;
+      accumulatedScrollY += deltaY;
+      const cellH = instance.cell_height();
+      if (cellH > 0) {
+        while (accumulatedScrollY >= cellH) {
+          instance.scroll_down(1);
+          accumulatedScrollY -= cellH;
+        }
+        while (accumulatedScrollY <= -cellH) {
+          instance.scroll_up(1);
+          accumulatedScrollY += cellH;
+        }
+      }
+    }
+    // horizontal: do nothing during move, decide on touchend
+  }, { passive: false });
+
+  canvas.addEventListener("touchend", (e) => {
+    if (swipeAxis === "horizontal") {
+      const dx = (e.changedTouches[0]?.clientX ?? touchStartX) - touchStartX;
+      if (dx < -SWIPE_THRESHOLD) {
+        instance.next_page();
+      } else if (dx > SWIPE_THRESHOLD) {
+        instance.prev_page();
+      }
+    }
+    swipeAxis = null;
+  }, { passive: true });
+
   return {
     destroy() {
       instance.free();
