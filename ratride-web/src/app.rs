@@ -233,6 +233,13 @@ impl WebApp {
         self.cols = self.terminal.backend().cols();
         self.rows = self.terminal.backend().rows();
 
+        // Clamp scroll offset after resize (window may now be tall enough to fit all content)
+        let max = self.max_scroll();
+        let off = self.scroll_offset_mut();
+        if *off > max {
+            *off = max;
+        }
+
         // Resolve image dimensions for newly loaded images
         self.resolve_image_dimensions();
 
