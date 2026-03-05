@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="./examples/ratride_demo.gif" width="540" />
+    <img src="https://raw.githubusercontent.com/fand/ratride/main/examples/ratride_demo.gif" width="540" />
     <h1>Ratride</h1>
 </div>
 
