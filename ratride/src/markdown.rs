@@ -1048,7 +1048,7 @@ impl<'a> MdConverter<'a> {
             for line in code.split('\n') {
                 let regions = h.highlight_line(line, &self.syntax_set).unwrap_or_default();
                 let mut spans: Vec<Span<'static>> =
-                    vec![Span::styled("  ", Style::default().bg(bg))];
+                    vec![Span::styled("\u{00a0}\u{00a0}", Style::default().bg(bg))];
                 for (syn_style, text) in regions {
                     let fg_color = Color::Rgb(
                         syn_style.foreground.r,
@@ -1074,7 +1074,9 @@ impl<'a> MdConverter<'a> {
                     {
                         style = style.add_modifier(Modifier::UNDERLINED);
                     }
-                    spans.push(Span::styled(text.to_string(), style));
+                    // Use NBSP so word-wrapper falls back to character-based
+                    // wrapping, matching wrapped_line_height calculation.
+                    spans.push(Span::styled(text.replace(' ', "\u{00a0}"), style));
                 }
                 self.lines
                     .push(Line::from(spans).style(Style::default().bg(bg)));
@@ -1083,8 +1085,10 @@ impl<'a> MdConverter<'a> {
             // Fallback: uniform style (no language or unknown language)
             let style = Style::default().fg(self.theme.fg).bg(bg);
             for line in code.split('\n') {
+                // Use NBSP so word-wrapper falls back to character-based wrapping
+                let text = format!("\u{00a0}\u{00a0}{}", line.replace(' ', "\u{00a0}"));
                 self.lines.push(
-                    Line::from(vec![Span::styled(format!("  {line}"), style)])
+                    Line::from(vec![Span::styled(text, style)])
                         .style(Style::default().bg(bg)),
                 );
             }
