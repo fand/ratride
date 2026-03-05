@@ -108,6 +108,29 @@ impl CanvasBackend {
     }
 
     pub fn resize(&mut self) {
+        // Apply pending size from JS (data-tw / data-th attributes) so that
+        // the canvas bitmap clear, CSS resize, and redraw all happen in the
+        // same rAF frame — preventing both flicker and bitmap stretching.
+        let el: &web_sys::Element = self.canvas.as_ref();
+        if let (Some(tw), Some(th)) = (el.get_attribute("data-tw"), el.get_attribute("data-th")) {
+            if let (Ok(pw), Ok(ph)) = (tw.parse::<u32>(), th.parse::<u32>()) {
+                if self.canvas.width() != pw || self.canvas.height() != ph {
+                    self.canvas.set_width(pw);
+                    self.canvas.set_height(ph);
+                    // Update CSS size to match (CSS px = physical px / dpr)
+                    let style = self.canvas.style();
+                    let _ = style.set_property("width", &format!("{}px", pw as f64 / self.dpr));
+                    let _ = style.set_property("height", &format!("{}px", ph as f64 / self.dpr));
+                    // Re-apply DPR scale + font after canvas size change resets context
+                    let _ = self
+                        .ctx
+                        .set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
+                    let font = format!("{}px monospace", self.font_size);
+                    self.ctx.set_font(&font);
+                }
+            }
+        }
+
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;
         self.cols = (css_w / self.cell_width) as u16;

@@ -54,23 +54,35 @@ export async function run(md, config = {}) {
   container.appendChild(overlay);
   parent.appendChild(container);
 
-  // Sizing helper — guard against no-op resizes to avoid clearing the canvas
-  // (setting canvas.width resets the bitmap even if the value is unchanged)
-  function resize() {
+  // Store target physical size as data attributes so that the Rust backend
+  // can apply them inside tick(). This avoids the flicker caused by setting
+  // canvas.width (which clears the bitmap) in a separate callback from the
+  // redraw that happens in tick().
+  function updateTargetSize() {
+    const isBody = parent === document.body;
+    const w = isBody ? window.innerWidth : parent.clientWidth;
+    const h = isBody ? window.innerHeight : parent.clientHeight;
+    canvas.dataset.tw = String(Math.round(w * dpr));
+    canvas.dataset.th = String(Math.round(h * dpr));
+    // Don't update canvas.style.width/height here — Rust applies it
+    // together with canvas.width/height to avoid bitmap stretching.
+  }
+  // Set initial size directly (no flicker on first frame)
+  {
     const isBody = parent === document.body;
     const w = isBody ? window.innerWidth : parent.clientWidth;
     const h = isBody ? window.innerHeight : parent.clientHeight;
     const pw = Math.round(w * dpr);
     const ph = Math.round(h * dpr);
-    if (canvas.width === pw && canvas.height === ph) return;
     canvas.width = pw;
     canvas.height = ph;
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
+    canvas.dataset.tw = String(pw);
+    canvas.dataset.th = String(ph);
   }
-  resize();
 
-  const ro = new ResizeObserver(resize);
+  const ro = new ResizeObserver(updateTargetSize);
   ro.observe(container);
 
   const instance = RatRide.run(
