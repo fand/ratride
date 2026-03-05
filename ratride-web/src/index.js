@@ -80,16 +80,16 @@ export async function run(md, config = {}) {
     fontSize,
   );
 
-  // --- Touch / swipe navigation ---
+  // --- Touch navigation ---
   canvas.style.touchAction = "none";
 
   let touchStartX = 0;
   let touchStartY = 0;
   let touchLastY = 0;
-  let swipeAxis = null; // null | "horizontal" | "vertical"
+  let didScroll = false;
   let accumulatedScrollY = 0;
-  const AXIS_LOCK_THRESHOLD = 10; // px before axis is decided
-  const SWIPE_THRESHOLD = 50; // px for horizontal page change
+  const TAP_ZONE = 0.4; // left/right 40% of canvas width
+  const MOVE_THRESHOLD = 10; // px to distinguish tap from scroll
 
   canvas.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 1) return;
@@ -97,7 +97,7 @@ export async function run(md, config = {}) {
     touchStartX = t.clientX;
     touchStartY = t.clientY;
     touchLastY = t.clientY;
-    swipeAxis = null;
+    didScroll = false;
     accumulatedScrollY = 0;
   }, { passive: false });
 
@@ -105,20 +105,14 @@ export async function run(md, config = {}) {
     if (e.touches.length !== 1) return;
     e.preventDefault();
     const t = e.touches[0];
-    const dx = t.clientX - touchStartX;
     const dy = t.clientY - touchStartY;
 
-    // Lock axis once movement exceeds threshold
-    if (swipeAxis === null) {
-      if (Math.abs(dx) > AXIS_LOCK_THRESHOLD || Math.abs(dy) > AXIS_LOCK_THRESHOLD) {
-        swipeAxis = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
-      } else {
-        return;
-      }
+    if (Math.abs(dy) > MOVE_THRESHOLD) {
+      didScroll = true;
     }
 
-    if (swipeAxis === "vertical") {
-      const deltaY = touchLastY - t.clientY; // positive = finger moves up = scroll down
+    if (didScroll) {
+      const deltaY = touchLastY - t.clientY; // positive = finger up = scroll down
       touchLastY = t.clientY;
       accumulatedScrollY += deltaY;
       const cellH = instance.cell_height();
@@ -133,19 +127,18 @@ export async function run(md, config = {}) {
         }
       }
     }
-    // horizontal: do nothing during move, decide on touchend
   }, { passive: false });
 
   canvas.addEventListener("touchend", (e) => {
-    if (swipeAxis === "horizontal") {
-      const dx = (e.changedTouches[0]?.clientX ?? touchStartX) - touchStartX;
-      if (dx < -SWIPE_THRESHOLD) {
-        instance.next_page();
-      } else if (dx > SWIPE_THRESHOLD) {
-        instance.prev_page();
-      }
+    if (didScroll) return;
+    // Tap: check if in left/right 40% zone
+    const rect = canvas.getBoundingClientRect();
+    const relX = (touchStartX - rect.left) / rect.width;
+    if (relX <= TAP_ZONE) {
+      instance.prev_page();
+    } else if (relX >= 1 - TAP_ZONE) {
+      instance.next_page();
     }
-    swipeAxis = null;
   }, { passive: true });
 
   return {
