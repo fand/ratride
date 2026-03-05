@@ -36,4 +36,4 @@ clap = { version = "4", features = ["derive"], optional = true }
 syntect = { version = "5", default-features = false, features = ["default-themes", "default-syntaxes", "regex-fancy", "plist-load"] }
 tiny_http = { version = "0.12", optional = true }
 notify = { version = "8", optional = true }
-figrat = { version = "0.1.0", default-features = false }
+figrat = { version = "0.2.0", default-features = false }

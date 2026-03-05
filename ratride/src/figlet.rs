@@ -186,6 +186,7 @@ pub fn render_figrat(text: &str, font: Option<&str>, color_spec: &str) -> Option
         chars: None,
         gradient,
         direction,
+        blend: figrat::color::gradient::BlendMode::default(),
     }];
     let colored = figrat::color::colorize::colorize(&canvas, &rules);
     Some(figrat::output::ansi::render_ansi(
