@@ -133,24 +133,30 @@ impl WebApp {
         }
     }
 
+    pub fn scroll_down(&mut self, lines: u16) {
+        if self.can_scroll() {
+            *self.scroll_offset_mut() = self.scroll_offset().saturating_add(lines).min(self.max_scroll());
+        }
+    }
+
+    pub fn scroll_up(&mut self, lines: u16) {
+        if self.can_scroll() {
+            *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(lines);
+        }
+    }
+
+    pub fn cell_height(&self) -> f64 {
+        self.terminal.backend().cell_height()
+    }
+
     pub fn handle_key(&mut self, key: &str) {
         match key {
             "ArrowRight" | "l" | " " => self.next_page(),
             "ArrowLeft" | "h" => self.prev_page(),
-            "ArrowDown" | "j" if self.can_scroll() => {
-                *self.scroll_offset_mut() =
-                    self.scroll_offset().saturating_add(1).min(self.max_scroll());
-            }
-            "ArrowUp" | "k" if self.can_scroll() => {
-                *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(1);
-            }
-            "d" if self.can_scroll() => {
-                *self.scroll_offset_mut() =
-                    self.scroll_offset().saturating_add(10).min(self.max_scroll());
-            }
-            "u" if self.can_scroll() => {
-                *self.scroll_offset_mut() = self.scroll_offset().saturating_sub(10);
-            }
+            "ArrowDown" | "j" => self.scroll_down(1),
+            "ArrowUp" | "k" => self.scroll_up(1),
+            "d" => self.scroll_down(10),
+            "u" => self.scroll_up(10),
             _ => {}
         }
     }
@@ -335,7 +341,8 @@ impl WebApp {
             // Mirror the exact Layout used in render::draw_center
             let main_area = Rect::new(0, 0, self.cols, self.rows.saturating_sub(1));
             let content_area = main_area.inner(Margin::new(2, 1));
-            let content_height = slide.content.lines.len() as u16;
+            let content_height =
+                render::wrapped_content_height(&slide.content, content_area.width) as u16;
             let [centered] = Layout::vertical([Constraint::Length(content_height)])
                 .flex(Flex::Center)
                 .areas(content_area);

@@ -1,4 +1,5 @@
 use ratride::markdown::{HeaderItem, SemanticElement};
+use ratride::render::wrapped_line_height;
 use ratatui::text::Text;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlElement};
@@ -87,18 +88,29 @@ impl DomOverlay {
                     start_col,
                     end_col,
                 } => {
-                    let y_offset = *line_index as i32 - scroll as i32;
-                    if y_offset < 0 || y_offset >= visible_rows as i32 {
+                    let width = content_area_width as usize;
+                    if width == 0 {
                         continue;
                     }
 
-                    // For center layout, add horizontal centering offset
+                    // Accumulate visual rows for all lines before this one
+                    let mut y_base: i32 = 0;
+                    for i in 0..*line_index {
+                        if let Some(line) = content.lines.get(i) {
+                            y_base += wrapped_line_height(line, content_area_width) as i32;
+                        }
+                    }
+                    y_base -= scroll as i32;
+
+                    // Center offset (only when line fits without wrapping)
                     let center_x = if is_center {
                         if let Some(line) = content.lines.get(*line_index) {
                             let line_w = line.width();
-                            (content_area_width as usize).saturating_sub(line_w) as f64
-                                / 2.0
-                                * cell_width
+                            if line_w <= width {
+                                (width - line_w) as f64 / 2.0 * cell_width
+                            } else {
+                                0.0
+                            }
                         } else {
                             0.0
                         }
@@ -106,25 +118,50 @@ impl DomOverlay {
                         0.0
                     };
 
-                    let px_x =
-                        content_offset_x + center_x + (*start_col as f64) * cell_width;
-                    let px_y = content_offset_y + (y_offset as f64) * cell_height;
-                    let px_w = ((*end_col - *start_col) as f64) * cell_width;
-                    let px_h = cell_height;
+                    // Link may span multiple visual rows when the line wraps
+                    let first_wrap_row = *start_col / width;
+                    let last_wrap_row = end_col.saturating_sub(1) / width;
 
-                    let a = self.document.create_element("a").expect("create anchor");
-                    let _ = a.set_attribute("href", url);
-                    let _ = a.set_attribute("target", "_blank");
-                    let _ = a.set_attribute("rel", "noopener noreferrer");
-                    a.set_text_content(Some(text));
-                    let style = format!(
-                        "position:absolute;left:{px_x}px;top:{px_y}px;\
-                         width:{px_w}px;height:{px_h}px;\
-                         color:transparent;pointer-events:auto;cursor:pointer;\
-                         text-decoration:none;font-size:0;display:block"
-                    );
-                    let _ = a.set_attribute("style", &style);
-                    let _ = self.container.append_child(&a);
+                    for wrap_row in first_wrap_row..=last_wrap_row {
+                        let screen_y = y_base + wrap_row as i32;
+                        if screen_y < 0 || screen_y >= visible_rows as i32 {
+                            continue;
+                        }
+
+                        let row_x_start = if wrap_row == first_wrap_row {
+                            *start_col % width
+                        } else {
+                            0
+                        };
+                        let row_x_end = if wrap_row == last_wrap_row {
+                            *end_col - last_wrap_row * width
+                        } else {
+                            width
+                        };
+
+                        let px_x = content_offset_x + center_x
+                            + (row_x_start as f64) * cell_width;
+                        let px_y =
+                            content_offset_y + (screen_y as f64) * cell_height;
+                        let px_w =
+                            ((row_x_end - row_x_start) as f64) * cell_width;
+                        let px_h = cell_height;
+
+                        let a =
+                            self.document.create_element("a").expect("create anchor");
+                        let _ = a.set_attribute("href", url);
+                        let _ = a.set_attribute("target", "_blank");
+                        let _ = a.set_attribute("rel", "noopener noreferrer");
+                        a.set_text_content(Some(text));
+                        let style = format!(
+                            "position:absolute;left:{px_x}px;top:{px_y}px;\
+                             width:{px_w}px;height:{px_h}px;\
+                             color:transparent;pointer-events:auto;cursor:pointer;\
+                             text-decoration:none;font-size:0;display:block"
+                        );
+                        let _ = a.set_attribute("style", &style);
+                        let _ = self.container.append_child(&a);
+                    }
                 }
             }
         }

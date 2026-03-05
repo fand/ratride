@@ -65,7 +65,7 @@ pub fn draw_default(
 
     let hyperlinks = collect_hyperlinks(&slide.semantics, &slide.content, scroll, content_area, Alignment::Left);
 
-    let content_len = slide.content.lines.len();
+    let content_len = wrapped_content_height(&slide.content, content_area.width);
     draw_scrollbar(scroll, content_len, content_area.height, frame, area);
 
     let mut placements = Vec::new();
@@ -93,8 +93,8 @@ pub fn draw_center(
     frame: &mut Frame,
     area: Rect,
 ) -> (Vec<ImagePlacement>, Vec<HyperlinkCell>) {
-    let content_height = slide.content.lines.len() as u16;
     let content_area = area.inner(Margin::new(2, 1));
+    let content_height = wrapped_content_height(&slide.content, content_area.width) as u16;
 
     let [centered_area] = Layout::vertical([Constraint::Length(content_height)])
         .flex(Flex::Center)
@@ -384,13 +384,22 @@ fn collect_hyperlinks(
     cells
 }
 /// Compute how many screen rows a line occupies when word-wrapped to `width` columns.
-fn wrapped_line_height(line: &ratatui::text::Line<'_>, width: u16) -> u16 {
+pub fn wrapped_line_height(line: &ratatui::text::Line<'_>, width: u16) -> u16 {
     if width == 0 {
         return 1;
     }
     let w = width as usize;
     let total_width = line.width();
     ((total_width + w - 1) / w).max(1) as u16
+}
+
+/// Total visual rows occupied by `content` after wrapping to `width` columns.
+pub fn wrapped_content_height(content: &Text<'_>, width: u16) -> usize {
+    content
+        .lines
+        .iter()
+        .map(|l| wrapped_line_height(l, width) as usize)
+        .sum()
 }
 
 /// Pre-fill buffer rows with Line::style background for full-width code block bg.
