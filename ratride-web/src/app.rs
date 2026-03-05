@@ -341,7 +341,8 @@ impl WebApp {
             // Mirror the exact Layout used in render::draw_center
             let main_area = Rect::new(0, 0, self.cols, self.rows.saturating_sub(1));
             let content_area = main_area.inner(Margin::new(2, 1));
-            let content_height = slide.content.lines.len() as u16;
+            let content_height =
+                render::wrapped_content_height(&slide.content, content_area.width) as u16;
             let [centered] = Layout::vertical([Constraint::Length(content_height)])
                 .flex(Flex::Center)
                 .areas(content_area);
