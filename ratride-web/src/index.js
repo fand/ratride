@@ -86,10 +86,12 @@ export async function run(md, config = {}) {
   let touchStartX = 0;
   let touchStartY = 0;
   let touchLastY = 0;
+  let touchStartTime = 0;
   let didScroll = false;
   let accumulatedScrollY = 0;
   const TAP_ZONE = 0.4; // left/right 40% of canvas width
   const MOVE_THRESHOLD = 10; // px to distinguish tap from scroll
+  const TAP_MAX_DURATION = 200; // ms
 
   canvas.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 1) return;
@@ -97,6 +99,7 @@ export async function run(md, config = {}) {
     touchStartX = t.clientX;
     touchStartY = t.clientY;
     touchLastY = t.clientY;
+    touchStartTime = e.timeStamp;
     didScroll = false;
     accumulatedScrollY = 0;
   }, { passive: false });
@@ -130,7 +133,7 @@ export async function run(md, config = {}) {
   }, { passive: false });
 
   canvas.addEventListener("touchend", (e) => {
-    if (didScroll) return;
+    if (didScroll || e.timeStamp - touchStartTime >= TAP_MAX_DURATION) return;
     // Tap: check if in left/right 40% zone
     const rect = canvas.getBoundingClientRect();
     const relX = (touchStartX - rect.left) / rect.width;
