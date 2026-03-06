@@ -143,7 +143,7 @@ impl WebApp {
 
             // Process in reverse order so line index adjustments don't affect earlier headings
             let headings: Vec<_> = slide.figlet_headings.clone();
-            let mut figlet_imgs = Vec::new();
+            let mut figlet_imgs: Vec<FigletImage> = Vec::new();
 
             for heading in headings.iter().rev() {
                 let (img_w, img_h) =
@@ -203,6 +203,12 @@ impl WebApp {
                         if img.line_index > start {
                             img.line_index =
                                 (img.line_index as i32 + line_delta).max(0) as usize;
+                        }
+                    }
+                    for fi in &mut figlet_imgs {
+                        if fi.line_index > start {
+                            fi.line_index =
+                                (fi.line_index as i32 + line_delta).max(0) as usize;
                         }
                     }
                 }
