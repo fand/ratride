@@ -17,7 +17,7 @@ use web_sys::HtmlImageElement;
 const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
 const STAGGER_MS: f32 = 60.0;
-const FIGLET_CROSSFADE_MS: f64 = 100.0;
+const FIGLET_WIPE_MS: f64 = 200.0;
 
 /// A figlet heading rendered as an image for tight line-height display.
 struct FigletImage {
@@ -53,8 +53,8 @@ pub struct WebApp {
     figlet_images: Vec<Vec<FigletImage>>,
     is_mobile: bool,
     figlet_image_mode: FigletImageMode,
-    /// Timestamp when figlet crossfade started (after transition ends).
-    figlet_crossfade_start: Option<f64>,
+    /// Timestamp when figlet wipe started (after transition ends).
+    figlet_wipe_start: Option<f64>,
 }
 
 impl WebApp {
@@ -110,7 +110,7 @@ impl WebApp {
             figlet_images,
             is_mobile,
             figlet_image_mode,
-            figlet_crossfade_start: None,
+            figlet_wipe_start: None,
         }
     }
 
@@ -265,7 +265,7 @@ impl WebApp {
     fn goto_page(&mut self, page: usize) {
         if page < self.total_pages() && page != self.current_page {
             self.current_page = page;
-            self.figlet_crossfade_start = None;
+            self.figlet_wipe_start = None;
             self.effect = self.create_transition();
         }
     }
@@ -474,10 +474,10 @@ impl WebApp {
             })
             .expect("draw");
 
-        // Detect transition end → start figlet crossfade
+        // Detect transition end → start figlet wipe
         self.effect = effect;
         if had_effect && self.effect.is_none() && !self.figlet_images[current_page].is_empty() {
-            self.figlet_crossfade_start = Some(timestamp);
+            self.figlet_wipe_start = Some(timestamp);
         }
 
         self.pending_placements = placements;
@@ -561,14 +561,14 @@ impl WebApp {
             return;
         }
 
-        // Compute crossfade alpha
-        let alpha = if let Some(start) = self.figlet_crossfade_start {
-            let progress = (self.last_timestamp - start) / FIGLET_CROSSFADE_MS;
-            if progress >= 1.0 {
-                self.figlet_crossfade_start = None;
+        // Compute wipe progress (0..1, left to right, ease-out)
+        let wipe_progress = if let Some(start) = self.figlet_wipe_start {
+            let t = ((self.last_timestamp - start) / FIGLET_WIPE_MS).clamp(0.0, 1.0);
+            if t >= 1.0 {
+                self.figlet_wipe_start = None;
                 1.0
             } else {
-                progress.clamp(0.0, 1.0)
+                1.0 - (1.0 - t) * (1.0 - t) // ease-out quad
             }
         } else {
             1.0
@@ -613,9 +613,6 @@ impl WebApp {
             let px_y = content_offset_y + y_cell as f64 * cell_h;
             let box_h = fi.placeholder_lines as f64 * cell_h;
 
-            // Clear placeholder "█" blocks with bg color (expand by 1px to cover BG_PAD fringe)
-            backend.fill_bg_rect(px_x - 1.0, px_y - 1.0, content_css_w + 2.0, box_h + 2.0);
-
             // Center the image horizontally within content area
             let draw_w = fi.css_width.min(content_css_w);
             let draw_h = fi.css_height;
@@ -627,14 +624,25 @@ impl WebApp {
             // Center vertically within placeholder box
             let center_y = px_y + (box_h - draw_h).max(0.0) / 2.0;
 
-            if alpha < 1.0 {
-                ctx.set_global_alpha(alpha);
-            }
-            let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(
-                &fi.img, center_x, center_y, draw_w, draw_h,
-            );
-            if alpha < 1.0 {
-                ctx.set_global_alpha(1.0);
+            if wipe_progress < 1.0 {
+                // Left-to-right wipe: clear bg & draw image only in revealed portion,
+                // leaving placeholder visible on the right side.
+                let clip_w = (center_x - px_x + 1.0) + draw_w * wipe_progress;
+                ctx.save();
+                ctx.begin_path();
+                ctx.rect(px_x - 1.0, px_y - 1.0, clip_w, box_h + 2.0);
+                ctx.clip();
+                backend.fill_bg_rect(px_x - 1.0, px_y - 1.0, content_css_w + 2.0, box_h + 2.0);
+                let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                    &fi.img, center_x, center_y, draw_w, draw_h,
+                );
+                ctx.restore();
+            } else {
+                // Fully revealed: clear entire placeholder and draw image
+                backend.fill_bg_rect(px_x - 1.0, px_y - 1.0, content_css_w + 2.0, box_h + 2.0);
+                let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                    &fi.img, center_x, center_y, draw_w, draw_h,
+                );
             }
         }
     }
