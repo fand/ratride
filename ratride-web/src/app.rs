@@ -7,6 +7,8 @@ use ratatui::{
     Terminal,
     buffer::Buffer,
     layout::{Constraint, Flex, Layout, Margin, Rect},
+    style::Style,
+    text::Span,
 };
 use std::collections::{HashMap, HashSet};
 use tachyonfx::{Duration, Effect, EffectRenderer};
@@ -15,6 +17,7 @@ use web_sys::HtmlImageElement;
 const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
 const STAGGER_MS: f32 = 60.0;
+const FIGLET_CROSSFADE_MS: f64 = 100.0;
 
 /// A figlet heading rendered as an image for tight line-height display.
 struct FigletImage {
@@ -50,6 +53,8 @@ pub struct WebApp {
     figlet_images: Vec<Vec<FigletImage>>,
     is_mobile: bool,
     figlet_image_mode: FigletImageMode,
+    /// Timestamp when figlet crossfade started (after transition ends).
+    figlet_crossfade_start: Option<f64>,
 }
 
 impl WebApp {
@@ -108,6 +113,7 @@ impl WebApp {
             figlet_images,
             is_mobile,
             figlet_image_mode,
+            figlet_crossfade_start: None,
         }
     }
 
@@ -158,12 +164,26 @@ impl WebApp {
                 let placeholder_lines = (display_h / cell_h).ceil() as usize;
                 let line_delta = placeholder_lines as i32 - heading.line_count as i32;
 
-                // Replace figlet lines with placeholder lines
+                // Replace figlet lines with "█"-filled placeholder lines
                 let start = heading.line_index;
                 let end = (start + heading.line_count).min(slide.content.lines.len());
                 slide.content.lines.drain(start..end);
+
+                // Extract foreground color from first span of figlet heading
+                let fg_color = heading
+                    .styled_lines
+                    .first()
+                    .and_then(|l| l.spans.first())
+                    .and_then(|s| s.style.fg);
+                let block_style = match fg_color {
+                    Some(c) => Style::default().fg(c),
+                    None => Style::default(),
+                };
+                let block_cols = (display_w / self.terminal.backend().cell_width()).ceil() as usize;
+                let block_str: String = "█".repeat(block_cols);
                 for i in 0..placeholder_lines {
-                    slide.content.lines.insert(start + i, ratatui::text::Line::default());
+                    let line = ratatui::text::Line::from(Span::styled(block_str.clone(), block_style));
+                    slide.content.lines.insert(start + i, line);
                 }
 
                 // Adjust line indices for elements after this heading
@@ -241,6 +261,7 @@ impl WebApp {
     fn goto_page(&mut self, page: usize) {
         if page < self.total_pages() && page != self.current_page {
             self.current_page = page;
+            self.figlet_crossfade_start = None;
             self.effect = self.create_transition();
         }
     }
@@ -392,6 +413,7 @@ impl WebApp {
         let scroll = self.scroll_offset();
         let theme = self.theme.clone();
 
+        let had_effect = self.effect.is_some();
         let mut effect = self.effect.take();
         let mut placements = Vec::new();
 
@@ -444,7 +466,12 @@ impl WebApp {
             })
             .expect("draw");
 
+        // Detect transition end → start figlet crossfade
         self.effect = effect;
+        if had_effect && self.effect.is_none() && !self.figlet_images[current_page].is_empty() {
+            self.figlet_crossfade_start = Some(timestamp);
+        }
+
         self.pending_placements = placements;
         self.prev_buffer = Some(completed.buffer.clone());
 
@@ -516,7 +543,7 @@ impl WebApp {
         self.overlay.set_visible(true);
     }
 
-    fn draw_images(&self) {
+    fn draw_images(&mut self) {
         for placement in &self.pending_placements {
             if let Some(img_el) = self.images.get(&placement.path) {
                 self.terminal.backend().draw_image(img_el, placement);
@@ -525,12 +552,26 @@ impl WebApp {
         self.draw_figlet_images();
     }
 
-    fn draw_figlet_images(&self) {
+    fn draw_figlet_images(&mut self) {
         let page = self.current_page;
         let figlet_imgs = &self.figlet_images[page];
         if figlet_imgs.is_empty() {
             return;
         }
+
+        // Compute crossfade alpha
+        let alpha = if let Some(start) = self.figlet_crossfade_start {
+            let progress = (self.last_timestamp - start) / FIGLET_CROSSFADE_MS;
+            if progress >= 1.0 {
+                self.figlet_crossfade_start = None;
+                1.0
+            } else {
+                progress.clamp(0.0, 1.0)
+            }
+        } else {
+            1.0
+        };
+
         let slide = &self.slides[page];
         let scroll = self.scroll_offset() as i32;
         let cell_w = self.terminal.backend().cell_width();
@@ -555,6 +596,11 @@ impl WebApp {
         }
 
         let content_css_w = content_width as f64 * cell_w;
+        let ctx = self.terminal.backend().ctx();
+
+        if alpha < 1.0 {
+            ctx.set_global_alpha(alpha);
+        }
 
         for fi in figlet_imgs {
             let y_cell = fi.line_index as i32 - scroll;
@@ -579,13 +625,13 @@ impl WebApp {
             // Center vertically within placeholder box
             let center_y = px_y + (box_h - draw_h).max(0.0) / 2.0;
 
-            let _ = self
-                .terminal
-                .backend()
-                .ctx()
-                .draw_image_with_html_image_element_and_dw_and_dh(
-                    &fi.img, center_x, center_y, draw_w, draw_h,
-                );
+            let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                &fi.img, center_x, center_y, draw_w, draw_h,
+            );
+        }
+
+        if alpha < 1.0 {
+            ctx.set_global_alpha(1.0);
         }
     }
 
