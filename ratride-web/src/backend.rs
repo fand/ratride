@@ -52,11 +52,9 @@ impl CanvasBackend {
         let css_w = canvas.width() as f64 / dpr;
         let css_h = canvas.height() as f64 / dpr;
         let cols = (css_w / cell_width) as u16;
-        // Snap cell_height so rows * cell_height == css_h exactly,
-        // ensuring the status bar sits flush at the canvas bottom.
         let nominal_cell_height = scaled_font_size * line_height;
-        let rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
-        let cell_height = css_h / rows as f64;
+        let rows = (css_h / nominal_cell_height).floor().max(1.0) as u16;
+        let cell_height = nominal_cell_height;
 
         Self {
             canvas,
@@ -99,8 +97,8 @@ impl CanvasBackend {
         self.line_height = lh;
         let css_h = self.canvas.height() as f64 / self.dpr;
         let nominal_cell_height = self.font_size * self.line_height;
-        self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
-        self.cell_height = css_h / self.rows as f64;
+        self.rows = (css_h / nominal_cell_height).floor().max(1.0) as u16;
+        self.cell_height = nominal_cell_height;
     }
 
     pub fn line_height(&self) -> f64 {
@@ -108,12 +106,35 @@ impl CanvasBackend {
     }
 
     pub fn resize(&mut self) {
+        // Apply pending size from JS (data-tw / data-th attributes) so that
+        // the canvas bitmap clear, CSS resize, and redraw all happen in the
+        // same rAF frame — preventing both flicker and bitmap stretching.
+        let el: &web_sys::Element = self.canvas.as_ref();
+        if let (Some(tw), Some(th)) = (el.get_attribute("data-tw"), el.get_attribute("data-th")) {
+            if let (Ok(pw), Ok(ph)) = (tw.parse::<u32>(), th.parse::<u32>()) {
+                if self.canvas.width() != pw || self.canvas.height() != ph {
+                    self.canvas.set_width(pw);
+                    self.canvas.set_height(ph);
+                    // Update CSS size to match (CSS px = physical px / dpr)
+                    let style = self.canvas.style();
+                    let _ = style.set_property("width", &format!("{}px", pw as f64 / self.dpr));
+                    let _ = style.set_property("height", &format!("{}px", ph as f64 / self.dpr));
+                    // Re-apply DPR scale + font after canvas size change resets context
+                    let _ = self
+                        .ctx
+                        .set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
+                    let font = format!("{}px monospace", self.font_size);
+                    self.ctx.set_font(&font);
+                }
+            }
+        }
+
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;
         self.cols = (css_w / self.cell_width) as u16;
         let nominal_cell_height = self.font_size * self.line_height;
-        self.rows = (css_h / nominal_cell_height).round().max(1.0) as u16;
-        self.cell_height = css_h / self.rows as f64;
+        self.rows = (css_h / nominal_cell_height).floor().max(1.0) as u16;
+        self.cell_height = nominal_cell_height;
 
         // Re-apply DPR scale + font (setTransform is absolute, won't compound)
         let _ = self
@@ -189,6 +210,28 @@ impl CanvasBackend {
             let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
                 img, center_x, center_y, draw_w, draw_h,
             );
+        }
+    }
+
+    /// Fill gaps outside the cell grid with the given color:
+    /// the strip below the last row and the right edge of the status-bar row.
+    pub fn fill_bottom_padding(&self, color: Color) {
+        let css_w = self.canvas.width() as f64 / self.dpr;
+        let css_h = self.canvas.height() as f64 / self.dpr;
+        let grid_w = self.cols as f64 * self.cell_width;
+        let grid_h = self.rows as f64 * self.cell_height;
+
+        let css = Self::color_to_css(color, "transparent");
+        self.ctx.set_fill_style_str(&css);
+
+        // Bottom gap (full width)
+        if css_h > grid_h {
+            self.ctx.fill_rect(0.0, grid_h, css_w, css_h - grid_h);
+        }
+        // Right gap at the last (status-bar) row
+        if css_w > grid_w && self.rows > 0 {
+            let last_row_y = (self.rows - 1) as f64 * self.cell_height;
+            self.ctx.fill_rect(grid_w, last_row_y, css_w - grid_w, self.cell_height);
         }
     }
 
