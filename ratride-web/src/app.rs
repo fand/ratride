@@ -1,8 +1,5 @@
 use crate::backend::CanvasBackend;
 use crate::overlay::DomOverlay;
-use ratride::markdown::{FigletFn, FigletImageMode, Frontmatter, Slide, SlideLayout, parse_slides};
-use ratride::render::{self, ImagePlacement};
-use ratride::theme::Theme;
 use ratatui::{
     Terminal,
     buffer::Buffer,
@@ -10,6 +7,9 @@ use ratatui::{
     style::Style,
     text::Span,
 };
+use ratride::markdown::{FigletFn, FigletImageMode, Frontmatter, Slide, SlideLayout, parse_slides};
+use ratride::render::{self, ImagePlacement};
+use ratride::theme::Theme;
 use std::collections::{HashMap, HashSet};
 use tachyonfx::{Duration, Effect, EffectRenderer};
 use web_sys::HtmlImageElement;
@@ -17,7 +17,7 @@ use web_sys::HtmlImageElement;
 const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
 const STAGGER_MS: f32 = 60.0;
-const FIGLET_CROSSFADE_MS: f64 = 250.0;
+const FIGLET_CROSSFADE_MS: f64 = 100.0;
 
 /// A figlet heading rendered as an image for tight line-height display.
 struct FigletImage {
@@ -88,10 +88,7 @@ impl WebApp {
         }
 
         let figlet_images: Vec<Vec<FigletImage>> = (0..len).map(|_| Vec::new()).collect();
-        let figlet_image_mode = frontmatter
-            .figlet_image
-            .clone()
-            .unwrap_or_default();
+        let figlet_image_mode = frontmatter.figlet_image.clone().unwrap_or_default();
 
         Self {
             terminal,
@@ -146,8 +143,10 @@ impl WebApp {
             let mut figlet_imgs: Vec<FigletImage> = Vec::new();
 
             for heading in headings.iter().rev() {
-                let (img_w, img_h) =
-                    self.terminal.backend().figlet_image_css_size(&heading.styled_lines);
+                let (img_w, img_h) = self
+                    .terminal
+                    .backend()
+                    .figlet_image_css_size(&heading.styled_lines);
                 if img_w == 0.0 || img_h == 0.0 {
                     continue;
                 }
@@ -182,7 +181,8 @@ impl WebApp {
                 let block_cols = (display_w / self.terminal.backend().cell_width()).ceil() as usize;
                 let block_str: String = "█".repeat(block_cols);
                 for i in 0..placeholder_lines {
-                    let line = ratatui::text::Line::from(Span::styled(block_str.clone(), block_style));
+                    let line =
+                        ratatui::text::Line::from(Span::styled(block_str.clone(), block_style));
                     slide.content.lines.insert(start + i, line);
                 }
 
@@ -193,22 +193,19 @@ impl WebApp {
                             ratride::markdown::SemanticElement::Heading { line_index, .. }
                             | ratride::markdown::SemanticElement::Link { line_index, .. } => {
                                 if *line_index > start {
-                                    *line_index =
-                                        (*line_index as i32 + line_delta).max(0) as usize;
+                                    *line_index = (*line_index as i32 + line_delta).max(0) as usize;
                                 }
                             }
                         }
                     }
                     for img in &mut slide.images {
                         if img.line_index > start {
-                            img.line_index =
-                                (img.line_index as i32 + line_delta).max(0) as usize;
+                            img.line_index = (img.line_index as i32 + line_delta).max(0) as usize;
                         }
                     }
                     for fi in &mut figlet_imgs {
                         if fi.line_index > start {
-                            fi.line_index =
-                                (fi.line_index as i32 + line_delta).max(0) as usize;
+                            fi.line_index = (fi.line_index as i32 + line_delta).max(0) as usize;
                         }
                     }
                 }
@@ -248,7 +245,8 @@ impl WebApp {
     fn can_scroll(&self) -> bool {
         let visible = self.rows.saturating_sub(3) as usize;
         let content_width = self.cols.saturating_sub(4);
-        let content_len = render::wrapped_content_height(&self.slides[self.current_page].content, content_width);
+        let content_len =
+            render::wrapped_content_height(&self.slides[self.current_page].content, content_width);
         content_len > visible
     }
 
@@ -285,7 +283,10 @@ impl WebApp {
 
     pub fn scroll_down(&mut self, lines: u16) {
         if self.can_scroll() {
-            *self.scroll_offset_mut() = self.scroll_offset().saturating_add(lines).min(self.max_scroll());
+            *self.scroll_offset_mut() = self
+                .scroll_offset()
+                .saturating_add(lines)
+                .min(self.max_scroll());
         }
     }
 
@@ -357,13 +358,13 @@ impl WebApp {
                     img.height = new_h;
                 } else if new_h > img.height {
                     let to_add = (new_h - img.height) as usize;
-                    let insert_at = (img.line_index + img.height as usize)
-                        .min(slide.content.lines.len());
+                    let insert_at =
+                        (img.line_index + img.height as usize).min(slide.content.lines.len());
                     for _ in 0..to_add {
-                        slide.content.lines.insert(
-                            insert_at,
-                            ratatui::text::Line::default(),
-                        );
+                        slide
+                            .content
+                            .lines
+                            .insert(insert_at, ratatui::text::Line::default());
                     }
                     line_delta += to_add as i32;
                     img.height = new_h;
@@ -445,7 +446,8 @@ impl WebApp {
                     Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
 
                 // Draw slide content, collect image placements
-                let (img_placements, _hyperlinks) = render::draw_slide(&slide, scroll, frame, main_area);
+                let (img_placements, _hyperlinks) =
+                    render::draw_slide(&slide, scroll, frame, main_area);
                 placements = img_placements;
 
                 // Apply transition effect
@@ -538,14 +540,8 @@ impl WebApp {
             content_width,
         );
         // Header links (top-right overlay, row 0 of main_area)
-        self.overlay.update_header_links(
-            &slide.header,
-            0.0,
-            0.0,
-            cell_w,
-            cell_h,
-            self.cols,
-        );
+        self.overlay
+            .update_header_links(&slide.header, 0.0, 0.0, cell_w, cell_h, self.cols);
         self.overlay.set_visible(true);
     }
 
@@ -617,8 +613,8 @@ impl WebApp {
             let px_y = content_offset_y + y_cell as f64 * cell_h;
             let box_h = fi.placeholder_lines as f64 * cell_h;
 
-            // Clear placeholder "█" blocks with bg color
-            backend.fill_bg_rect(px_x, px_y, content_css_w, box_h);
+            // Clear placeholder "█" blocks with bg color (expand by 1px to cover BG_PAD fringe)
+            backend.fill_bg_rect(px_x - 1.0, px_y - 1.0, content_css_w + 2.0, box_h + 2.0);
 
             // Center the image horizontally within content area
             let draw_w = fi.css_width.min(content_css_w);
