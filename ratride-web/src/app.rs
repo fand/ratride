@@ -103,15 +103,20 @@ impl WebApp {
 
     fn can_scroll(&self) -> bool {
         let visible = self.rows.saturating_sub(3) as usize;
-        let content_len = self.slides[self.current_page].content.lines.len();
+        let content_width = self.cols.saturating_sub(4);
+        let content_len = render::wrapped_content_height(&self.slides[self.current_page].content, content_width);
         content_len > visible
     }
 
     fn max_scroll(&self) -> u16 {
         let visible = self.rows.saturating_sub(3) as usize;
+        let content_width = self.cols.saturating_sub(4);
         let slide = &self.slides[self.current_page];
-        let content_len = slide.content.lines.len();
-        let right_len = slide.right_content.as_ref().map_or(0, |r| r.lines.len());
+        let content_len = render::wrapped_content_height(&slide.content, content_width);
+        let right_len = slide
+            .right_content
+            .as_ref()
+            .map_or(0, |r| render::wrapped_content_height(r, content_width));
         content_len.max(right_len).saturating_sub(visible) as u16
     }
 
