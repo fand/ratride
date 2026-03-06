@@ -291,6 +291,7 @@ impl WebApp {
         let content_w = self.cols.saturating_sub(4) as f64;
         let cell_w = self.terminal.backend().cell_width();
         let cell_h = self.terminal.backend().cell_height();
+        let mut slide_deltas: Vec<i32> = Vec::new();
         for slide in &mut self.slides {
             let mut line_delta: i32 = 0;
             for img in &mut slide.images {
@@ -339,6 +340,15 @@ impl WebApp {
                     }
                     line_delta += to_add as i32;
                     img.height = new_h;
+                }
+            }
+            slide_deltas.push(line_delta);
+        }
+        // Adjust figlet image positions when image resolutions changed content lines
+        for (slide_idx, &delta) in slide_deltas.iter().enumerate() {
+            if delta != 0 {
+                for fi in &mut self.figlet_images[slide_idx] {
+                    fi.line_index = ((fi.line_index as i32) + delta).max(0) as usize;
                 }
             }
         }
