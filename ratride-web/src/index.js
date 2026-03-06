@@ -54,6 +54,16 @@ export async function run(md, config = {}) {
   container.appendChild(overlay);
   parent.appendChild(container);
 
+  // Safe area inset at the bottom (notch / home indicator on mobile).
+  // env() can't be read via getComputedStyle, so we measure a hidden element.
+  const sabProbe = document.createElement("div");
+  sabProbe.style.cssText =
+    "position:fixed;bottom:0;left:0;width:0;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden;";
+  document.body.appendChild(sabProbe);
+  function safeAreaBottom() {
+    return sabProbe.offsetHeight;
+  }
+
   // Store target physical size as data attributes so that the Rust backend
   // can apply them inside tick(). This avoids the flicker caused by setting
   // canvas.width (which clears the bitmap) in a separate callback from the
@@ -64,6 +74,7 @@ export async function run(md, config = {}) {
     const h = isBody ? window.innerHeight : parent.clientHeight;
     canvas.dataset.tw = String(Math.round(w * dpr));
     canvas.dataset.th = String(Math.round(h * dpr));
+    canvas.dataset.sab = String(safeAreaBottom());
     // Don't update canvas.style.width/height here — Rust applies it
     // together with canvas.width/height to avoid bitmap stretching.
   }
@@ -80,6 +91,7 @@ export async function run(md, config = {}) {
     canvas.style.height = h + "px";
     canvas.dataset.tw = String(pw);
     canvas.dataset.th = String(ph);
+    canvas.dataset.sab = String(safeAreaBottom());
   }
 
   const ro = new ResizeObserver(updateTargetSize);
@@ -160,6 +172,7 @@ export async function run(md, config = {}) {
     destroy() {
       instance.free();
       ro.disconnect();
+      sabProbe.remove();
       container.remove();
     },
   };
