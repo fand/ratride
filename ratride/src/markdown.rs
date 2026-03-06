@@ -33,6 +33,18 @@ fn parse_header_item(s: &str) -> HeaderItem {
     }
 }
 
+/// Controls whether figlet headings are rendered as images (web only).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum FigletImageMode {
+    /// Render figlet headings as images only on mobile (default).
+    #[default]
+    MobileOnly,
+    /// Always render figlet headings as images.
+    Always,
+    /// Never render figlet headings as images (use text rendering).
+    Never,
+}
+
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
 pub struct Frontmatter {
@@ -51,6 +63,8 @@ pub struct Frontmatter {
     pub figlet_color: Option<String>,
     /// Header items displayed at top-right, overlaying the content area.
     pub header: Option<Vec<HeaderItem>>,
+    /// Whether to render figlet headings as images (web only).
+    pub figlet_image: Option<FigletImageMode>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -173,6 +187,13 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 }
                 "figlet_mobile" => {
                     fm.figlet_mobile = Some(value == "true");
+                }
+                "figlet_image" => {
+                    fm.figlet_image = Some(match value {
+                        "true" => FigletImageMode::Always,
+                        "false" => FigletImageMode::Never,
+                        _ => FigletImageMode::MobileOnly,
+                    });
                 }
                 "figlet_color" => {
                     if !value.is_empty() {

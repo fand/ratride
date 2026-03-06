@@ -1,6 +1,6 @@
 use crate::backend::CanvasBackend;
 use crate::overlay::DomOverlay;
-use ratride::markdown::{FigletFn, Frontmatter, Slide, SlideLayout, parse_slides};
+use ratride::markdown::{FigletFn, FigletImageMode, Frontmatter, Slide, SlideLayout, parse_slides};
 use ratride::render::{self, ImagePlacement};
 use ratride::theme::Theme;
 use ratatui::{
@@ -49,6 +49,7 @@ pub struct WebApp {
     /// Per-slide figlet heading images.
     figlet_images: Vec<Vec<FigletImage>>,
     is_mobile: bool,
+    figlet_image_mode: FigletImageMode,
 }
 
 impl WebApp {
@@ -82,6 +83,10 @@ impl WebApp {
         }
 
         let figlet_images: Vec<Vec<FigletImage>> = (0..len).map(|_| Vec::new()).collect();
+        let figlet_image_mode = frontmatter
+            .figlet_image
+            .clone()
+            .unwrap_or_default();
 
         Self {
             terminal,
@@ -102,11 +107,17 @@ impl WebApp {
             overlay_last_scroll: u16::MAX,
             figlet_images,
             is_mobile,
+            figlet_image_mode,
         }
     }
 
     pub fn init(&mut self) {
-        if self.is_mobile {
+        let should_image = match self.figlet_image_mode {
+            FigletImageMode::Always => true,
+            FigletImageMode::Never => false,
+            FigletImageMode::MobileOnly => self.is_mobile,
+        };
+        if should_image {
             self.process_figlet_headings();
         }
         self.effect = self.create_transition();
