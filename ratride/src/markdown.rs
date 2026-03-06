@@ -56,7 +56,7 @@ pub struct Frontmatter {
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
     pub bg_fill: Option<bool>,
-    /// Whether to enable figlet on mobile. Default: false (disabled on mobile).
+    /// Whether to enable figlet on mobile. Default: true.
     pub figlet_mobile: Option<bool>,
     /// Color argument for figrat. When set, `figrat --color "<value>"` is used
     /// instead of `figlet`.
@@ -615,7 +615,7 @@ impl<'a> MdConverter<'a> {
             figlet_fn,
             default_theme,
             is_mobile,
-            default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(false),
+            default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(true),
             pending_figlet_mobile: None,
             default_figlet_color: frontmatter.figlet_color.clone(),
             pending_figlet_color: None,
