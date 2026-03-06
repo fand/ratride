@@ -91,6 +91,14 @@ impl CanvasBackend {
         self.cell_height
     }
 
+    pub fn font_size(&self) -> f64 {
+        self.font_size
+    }
+
+    pub fn ctx(&self) -> &CanvasRenderingContext2d {
+        &self.ctx
+    }
+
     pub fn set_line_height(&mut self, lh: f64) {
         if (self.line_height - lh).abs() < f64::EPSILON {
             return;
@@ -277,7 +285,7 @@ impl CanvasBackend {
                 ctx.set_fill_style_str(&css);
                 let text = span.content.as_ref();
                 let _ = ctx.fill_text(text, x, y + baseline_offset);
-                x += text.chars().count() as f64 * self.cell_width;
+                x += span.width() as f64 * self.cell_width;
             }
         }
 

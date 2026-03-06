@@ -16,6 +16,19 @@ const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
 const STAGGER_MS: f32 = 60.0;
 
+/// A figlet heading rendered as an image for tight line-height display.
+struct FigletImage {
+    img: HtmlImageElement,
+    /// Line index in slide.content where the placeholder starts.
+    line_index: usize,
+    /// Number of placeholder lines reserved in slide.content.
+    placeholder_lines: usize,
+    /// CSS pixel width of the rendered image.
+    css_width: f64,
+    /// CSS pixel height of the rendered image.
+    css_height: f64,
+}
+
 pub struct WebApp {
     terminal: Terminal<CanvasBackend>,
     slides: Vec<Slide>,
@@ -33,6 +46,9 @@ pub struct WebApp {
     overlay: DomOverlay,
     overlay_last_page: usize,
     overlay_last_scroll: u16,
+    /// Per-slide figlet heading images.
+    figlet_images: Vec<Vec<FigletImage>>,
+    is_mobile: bool,
 }
 
 impl WebApp {
@@ -65,6 +81,8 @@ impl WebApp {
             }
         }
 
+        let figlet_images: Vec<Vec<FigletImage>> = (0..len).map(|_| Vec::new()).collect();
+
         Self {
             terminal,
             slides,
@@ -82,11 +100,98 @@ impl WebApp {
             overlay,
             overlay_last_page: usize::MAX,
             overlay_last_scroll: u16::MAX,
+            figlet_images,
+            is_mobile,
         }
     }
 
     pub fn init(&mut self) {
+        self.process_figlet_headings();
         self.effect = self.create_transition();
+    }
+
+    /// Render figlet headings to images and replace content lines with placeholders.
+    fn process_figlet_headings(&mut self) {
+        let font_size = self.terminal.backend().font_size();
+
+        for (slide_idx, slide) in self.slides.iter_mut().enumerate() {
+            if slide.figlet_headings.is_empty() {
+                continue;
+            }
+            let cell_h = font_size * slide.line_height;
+            let content_cols = self.cols.saturating_sub(4);
+            let content_css_w = content_cols as f64 * self.terminal.backend().cell_width();
+
+            // Process in reverse order so line index adjustments don't affect earlier headings
+            let headings: Vec<_> = slide.figlet_headings.clone();
+            let mut figlet_imgs = Vec::new();
+
+            for heading in headings.iter().rev() {
+                let (img_w, img_h) =
+                    self.terminal.backend().figlet_image_css_size(&heading.styled_lines);
+                if img_w == 0.0 || img_h == 0.0 {
+                    continue;
+                }
+
+                // On mobile, scale down to fit content width
+                let scale = if self.is_mobile && img_w > content_css_w {
+                    content_css_w / img_w
+                } else {
+                    1.0
+                };
+                let display_h = img_h * scale;
+                let display_w = img_w * scale;
+
+                let placeholder_lines = (display_h / cell_h).ceil() as usize;
+                let line_delta = placeholder_lines as i32 - heading.line_count as i32;
+
+                // Replace figlet lines with placeholder lines
+                let start = heading.line_index;
+                let end = (start + heading.line_count).min(slide.content.lines.len());
+                slide.content.lines.drain(start..end);
+                for i in 0..placeholder_lines {
+                    slide.content.lines.insert(start + i, ratatui::text::Line::default());
+                }
+
+                // Adjust line indices for elements after this heading
+                if line_delta != 0 {
+                    for sem in &mut slide.semantics {
+                        match sem {
+                            ratride::markdown::SemanticElement::Heading { line_index, .. }
+                            | ratride::markdown::SemanticElement::Link { line_index, .. } => {
+                                if *line_index > start {
+                                    *line_index =
+                                        (*line_index as i32 + line_delta).max(0) as usize;
+                                }
+                            }
+                        }
+                    }
+                    for img in &mut slide.images {
+                        if img.line_index > start {
+                            img.line_index =
+                                (img.line_index as i32 + line_delta).max(0) as usize;
+                        }
+                    }
+                }
+
+                let img = self
+                    .terminal
+                    .backend()
+                    .render_figlet_to_image(&heading.styled_lines);
+                if let Some(img) = img {
+                    figlet_imgs.push(FigletImage {
+                        img,
+                        line_index: start,
+                        placeholder_lines,
+                        css_width: display_w,
+                        css_height: display_h,
+                    });
+                }
+            }
+            // Reverse back to natural order
+            figlet_imgs.reverse();
+            self.figlet_images[slide_idx] = figlet_imgs;
+        }
     }
 
     fn total_pages(&self) -> usize {
@@ -393,6 +498,71 @@ impl WebApp {
             if let Some(img_el) = self.images.get(&placement.path) {
                 self.terminal.backend().draw_image(img_el, placement);
             }
+        }
+        self.draw_figlet_images();
+    }
+
+    fn draw_figlet_images(&self) {
+        let page = self.current_page;
+        let figlet_imgs = &self.figlet_images[page];
+        if figlet_imgs.is_empty() {
+            return;
+        }
+        let slide = &self.slides[page];
+        let scroll = self.scroll_offset() as i32;
+        let cell_w = self.terminal.backend().cell_width();
+        let cell_h = self.terminal.backend().cell_height();
+        let visible_rows = self.rows.saturating_sub(3) as i32;
+
+        // Content area offset: Margin::new(2, 1) in render.rs
+        let content_offset_x = 2.0 * cell_w;
+        let mut content_offset_y = 1.0 * cell_h;
+        let content_width = self.cols.saturating_sub(4);
+
+        let is_center = matches!(slide.layout, SlideLayout::Center);
+        if is_center {
+            let main_area = Rect::new(0, 0, self.cols, self.rows.saturating_sub(1));
+            let content_area = main_area.inner(Margin::new(2, 1));
+            let content_height =
+                render::wrapped_content_height(&slide.content, content_area.width) as u16;
+            let [centered] = Layout::vertical([Constraint::Length(content_height)])
+                .flex(Flex::Center)
+                .areas(content_area);
+            content_offset_y = centered.y as f64 * cell_h;
+        }
+
+        let content_css_w = content_width as f64 * cell_w;
+
+        for fi in figlet_imgs {
+            let y_cell = fi.line_index as i32 - scroll;
+            let end_cell = y_cell + fi.placeholder_lines as i32;
+            // Skip if entirely off-screen
+            if end_cell <= 0 || y_cell >= visible_rows {
+                continue;
+            }
+
+            let px_x = content_offset_x;
+            let px_y = content_offset_y + y_cell as f64 * cell_h;
+            let box_h = fi.placeholder_lines as f64 * cell_h;
+
+            // Center the image horizontally within content area
+            let draw_w = fi.css_width.min(content_css_w);
+            let draw_h = fi.css_height;
+            let center_x = if is_center {
+                px_x + (content_css_w - draw_w) / 2.0
+            } else {
+                px_x
+            };
+            // Center vertically within placeholder box
+            let center_y = px_y + (box_h - draw_h).max(0.0) / 2.0;
+
+            let _ = self
+                .terminal
+                .backend()
+                .ctx()
+                .draw_image_with_html_image_element_and_dw_and_dh(
+                    &fi.img, center_x, center_y, draw_w, draw_h,
+                );
         }
     }
 
