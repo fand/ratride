@@ -320,6 +320,9 @@ impl WebApp {
         self.pending_placements = placements;
         self.prev_buffer = Some(completed.buffer.clone());
 
+        // Fill gap below the last cell row with status bar color
+        self.terminal.backend().fill_bottom_padding(theme.status_bg);
+
         // Draw images on top of the cell grid (only when not in transition)
         if self.effect.is_none() {
             self.draw_images();
