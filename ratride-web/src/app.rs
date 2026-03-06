@@ -17,7 +17,7 @@ use web_sys::HtmlImageElement;
 const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
 const STAGGER_MS: f32 = 60.0;
-const FIGLET_CROSSFADE_MS: f64 = 100.0;
+const FIGLET_CROSSFADE_MS: f64 = 250.0;
 
 /// A figlet heading rendered as an image for tight line-height display.
 struct FigletImage {
@@ -602,11 +602,8 @@ impl WebApp {
         }
 
         let content_css_w = content_width as f64 * cell_w;
-        let ctx = self.terminal.backend().ctx();
-
-        if alpha < 1.0 {
-            ctx.set_global_alpha(alpha);
-        }
+        let backend = self.terminal.backend();
+        let ctx = backend.ctx();
 
         for fi in figlet_imgs {
             let y_cell = fi.line_index as i32 - scroll;
@@ -620,6 +617,9 @@ impl WebApp {
             let px_y = content_offset_y + y_cell as f64 * cell_h;
             let box_h = fi.placeholder_lines as f64 * cell_h;
 
+            // Clear placeholder "█" blocks with bg color
+            backend.fill_bg_rect(px_x, px_y, content_css_w, box_h);
+
             // Center the image horizontally within content area
             let draw_w = fi.css_width.min(content_css_w);
             let draw_h = fi.css_height;
@@ -631,13 +631,15 @@ impl WebApp {
             // Center vertically within placeholder box
             let center_y = px_y + (box_h - draw_h).max(0.0) / 2.0;
 
+            if alpha < 1.0 {
+                ctx.set_global_alpha(alpha);
+            }
             let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(
                 &fi.img, center_x, center_y, draw_w, draw_h,
             );
-        }
-
-        if alpha < 1.0 {
-            ctx.set_global_alpha(1.0);
+            if alpha < 1.0 {
+                ctx.set_global_alpha(1.0);
+            }
         }
     }
 

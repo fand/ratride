@@ -99,6 +99,14 @@ impl CanvasBackend {
         &self.ctx
     }
 
+    /// Fill a rectangle with the current background color.
+    pub fn fill_bg_rect(&self, x: f64, y: f64, w: f64, h: f64) {
+        if let Some(ref bg) = self.bg_css {
+            self.ctx.set_fill_style_str(bg);
+            self.ctx.fill_rect(x, y, w, h);
+        }
+    }
+
     pub fn set_line_height(&mut self, lh: f64) {
         if (self.line_height - lh).abs() < f64::EPSILON {
             return;
