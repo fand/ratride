@@ -249,6 +249,18 @@ pub enum SemanticElement {
     },
 }
 
+/// Metadata for a figlet heading that was rendered into ASCII art.
+/// Used by the web layer to render figlet headings as images.
+#[derive(Clone, Debug)]
+pub struct FigletHeadingMeta {
+    /// Line index in `content.lines` where the figlet art starts.
+    pub line_index: usize,
+    /// Number of lines the figlet art occupies.
+    pub line_count: usize,
+    /// The rendered ASCII art lines (with colors), saved for image rendering.
+    pub styled_lines: Vec<Line<'static>>,
+}
+
 /// Image reference found in a slide.
 #[derive(Clone, Debug)]
 pub struct SlideImage {
@@ -284,6 +296,8 @@ pub struct Slide {
     pub bg_fill: bool,
     /// Header items displayed at top-right, overlaying the content area.
     pub header: Vec<HeaderItem>,
+    /// Figlet heading metadata for web image rendering.
+    pub figlet_headings: Vec<FigletHeadingMeta>,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -478,6 +492,7 @@ struct MdConverter<'a> {
     in_heading: bool,
     heading_text_buf: String,
     images: Vec<SlideImage>,
+    figlet_headings: Vec<FigletHeadingMeta>,
     pending_image_max_width: Option<f64>,
     // Semantic elements for a11y
     semantics: Vec<SemanticElement>,
@@ -552,6 +567,7 @@ impl<'a> MdConverter<'a> {
             in_heading: false,
             heading_text_buf: String::new(),
             images: Vec::new(),
+            figlet_headings: Vec::new(),
             pending_image_max_width: None,
             semantics: Vec::new(),
             semantic_heading_level: 0,
@@ -648,6 +664,7 @@ impl<'a> MdConverter<'a> {
                 .or_else(|| self.default_layout.clone())
                 .unwrap_or_default();
             let semantics = std::mem::take(&mut self.semantics);
+            let figlet_headings = std::mem::take(&mut self.figlet_headings);
             let mut slide = match layout {
                 SlideLayout::TwoColumn => split_two_column(lines),
                 _ => Slide {
@@ -661,11 +678,13 @@ impl<'a> MdConverter<'a> {
                     line_height: DEFAULT_LINE_HEIGHT,
                     bg_fill: false,
                     header: Vec::new(),
+                    figlet_headings: Vec::new(),
                 },
             };
             slide.images = images;
             slide.transition = transition;
             slide.semantics = semantics;
+            slide.figlet_headings = figlet_headings;
             slide.theme = self.theme.clone();
             slide.line_height = self
                 .pending_line_height
@@ -1117,16 +1136,30 @@ impl<'a> MdConverter<'a> {
             .iter()
             .rposition(|l| l.chars().any(|c| !c.is_whitespace()))
             .map_or(0, |i| i + 1);
+
+        let line_index = self.lines.len();
+        let mut styled_lines = Vec::new();
         if has_color {
             // Parse ANSI escape codes into colored Spans
             for line in &art_lines[..end] {
-                self.lines.push(parse_ansi_line(line, style));
+                let l = parse_ansi_line(line, style);
+                styled_lines.push(l.clone());
+                self.lines.push(l);
             }
         } else {
             for line in &art_lines[..end] {
-                self.lines
-                    .push(Line::from(Span::styled(line.to_string(), style)));
+                let l = Line::from(Span::styled(line.to_string(), style));
+                styled_lines.push(l.clone());
+                self.lines.push(l);
             }
+        }
+        let line_count = styled_lines.len();
+        if line_count > 0 {
+            self.figlet_headings.push(FigletHeadingMeta {
+                line_index,
+                line_count,
+                styled_lines,
+            });
         }
     }
 
@@ -1166,6 +1199,7 @@ impl<'a> MdConverter<'a> {
                     .take()
                     .or_else(|| self.default_header.clone())
                     .unwrap_or_default(),
+                figlet_headings: std::mem::take(&mut self.figlet_headings),
             });
         }
         self.slides
@@ -1205,6 +1239,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 line_height: 1.2,
                 bg_fill: false,
                 header: Vec::new(),
+                figlet_headings: Vec::new(),
             }
         }
         None => Slide {
@@ -1218,6 +1253,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             line_height: 1.2,
             bg_fill: false,
             header: Vec::new(),
+            figlet_headings: Vec::new(),
         },
     }
 }
