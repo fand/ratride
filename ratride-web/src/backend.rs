@@ -131,13 +131,9 @@ impl CanvasBackend {
 
         let css_w = self.canvas.width() as f64 / self.dpr;
         let css_h = self.canvas.height() as f64 / self.dpr;
-        let sab = el
-            .get_attribute("data-sab")
-            .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0);
         self.cols = (css_w / self.cell_width) as u16;
         let nominal_cell_height = self.font_size * self.line_height;
-        self.rows = ((css_h - sab) / nominal_cell_height).floor().max(1.0) as u16;
+        self.rows = (css_h / nominal_cell_height).floor().max(1.0) as u16;
         self.cell_height = nominal_cell_height;
 
         // Re-apply DPR scale + font (setTransform is absolute, won't compound)
