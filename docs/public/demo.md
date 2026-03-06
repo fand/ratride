@@ -1,13 +1,13 @@
 ---
 line_height: 1.2
-figlet_mobile: false
+figlet_mobile: true
 header:
   - [GitHub](https://github.com/fand/ratride)
 ---
 <!-- layout: center -->
 <!-- figlet -->
 <!-- figlet_color: ff6666,ff66ff,33ffff -->
-<!-- image_max_width: 35% -->
+<!-- image_max_width: 40% -->
 
 ![](./ratride_logo_white.png)
 

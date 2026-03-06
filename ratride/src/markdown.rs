@@ -33,6 +33,18 @@ fn parse_header_item(s: &str) -> HeaderItem {
     }
 }
 
+/// Controls whether figlet headings are rendered as images (web only).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum FigletImageMode {
+    /// Render figlet headings as images only on mobile (default).
+    #[default]
+    MobileOnly,
+    /// Always render figlet headings as images.
+    Always,
+    /// Never render figlet headings as images (use text rendering).
+    Never,
+}
+
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
 #[derive(Clone, Debug, Default)]
 pub struct Frontmatter {
@@ -44,13 +56,15 @@ pub struct Frontmatter {
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
     pub bg_fill: Option<bool>,
-    /// Whether to enable figlet on mobile. Default: false (disabled on mobile).
+    /// Whether to enable figlet on mobile. Default: true.
     pub figlet_mobile: Option<bool>,
     /// Color argument for figrat. When set, `figrat --color "<value>"` is used
     /// instead of `figlet`.
     pub figlet_color: Option<String>,
     /// Header items displayed at top-right, overlaying the content area.
     pub header: Option<Vec<HeaderItem>>,
+    /// Whether to render figlet headings as images (web only).
+    pub figlet_image: Option<FigletImageMode>,
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -174,6 +188,13 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 "figlet_mobile" => {
                     fm.figlet_mobile = Some(value == "true");
                 }
+                "figlet_image" => {
+                    fm.figlet_image = Some(match value {
+                        "true" => FigletImageMode::Always,
+                        "false" => FigletImageMode::Never,
+                        _ => FigletImageMode::MobileOnly,
+                    });
+                }
                 "figlet_color" => {
                     if !value.is_empty() {
                         fm.figlet_color = Some(value.to_string());
@@ -249,6 +270,18 @@ pub enum SemanticElement {
     },
 }
 
+/// Metadata for a figlet heading that was rendered into ASCII art.
+/// Used by the web layer to render figlet headings as images.
+#[derive(Clone, Debug)]
+pub struct FigletHeadingMeta {
+    /// Line index in `content.lines` where the figlet art starts.
+    pub line_index: usize,
+    /// Number of lines the figlet art occupies.
+    pub line_count: usize,
+    /// The rendered ASCII art lines (with colors), saved for image rendering.
+    pub styled_lines: Vec<Line<'static>>,
+}
+
 /// Image reference found in a slide.
 #[derive(Clone, Debug)]
 pub struct SlideImage {
@@ -284,6 +317,8 @@ pub struct Slide {
     pub bg_fill: bool,
     /// Header items displayed at top-right, overlaying the content area.
     pub header: Vec<HeaderItem>,
+    /// Figlet heading metadata for web image rendering.
+    pub figlet_headings: Vec<FigletHeadingMeta>,
 }
 
 const IMAGE_PLACEHOLDER_HEIGHT: u16 = 15;
@@ -478,6 +513,7 @@ struct MdConverter<'a> {
     in_heading: bool,
     heading_text_buf: String,
     images: Vec<SlideImage>,
+    figlet_headings: Vec<FigletHeadingMeta>,
     pending_image_max_width: Option<f64>,
     // Semantic elements for a11y
     semantics: Vec<SemanticElement>,
@@ -552,6 +588,7 @@ impl<'a> MdConverter<'a> {
             in_heading: false,
             heading_text_buf: String::new(),
             images: Vec::new(),
+            figlet_headings: Vec::new(),
             pending_image_max_width: None,
             semantics: Vec::new(),
             semantic_heading_level: 0,
@@ -578,7 +615,7 @@ impl<'a> MdConverter<'a> {
             figlet_fn,
             default_theme,
             is_mobile,
-            default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(false),
+            default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(true),
             pending_figlet_mobile: None,
             default_figlet_color: frontmatter.figlet_color.clone(),
             pending_figlet_color: None,
@@ -648,6 +685,7 @@ impl<'a> MdConverter<'a> {
                 .or_else(|| self.default_layout.clone())
                 .unwrap_or_default();
             let semantics = std::mem::take(&mut self.semantics);
+            let figlet_headings = std::mem::take(&mut self.figlet_headings);
             let mut slide = match layout {
                 SlideLayout::TwoColumn => split_two_column(lines),
                 _ => Slide {
@@ -661,11 +699,13 @@ impl<'a> MdConverter<'a> {
                     line_height: DEFAULT_LINE_HEIGHT,
                     bg_fill: false,
                     header: Vec::new(),
+                    figlet_headings: Vec::new(),
                 },
             };
             slide.images = images;
             slide.transition = transition;
             slide.semantics = semantics;
+            slide.figlet_headings = figlet_headings;
             slide.theme = self.theme.clone();
             slide.line_height = self
                 .pending_line_height
@@ -1117,16 +1157,30 @@ impl<'a> MdConverter<'a> {
             .iter()
             .rposition(|l| l.chars().any(|c| !c.is_whitespace()))
             .map_or(0, |i| i + 1);
+
+        let line_index = self.lines.len();
+        let mut styled_lines = Vec::new();
         if has_color {
             // Parse ANSI escape codes into colored Spans
             for line in &art_lines[..end] {
-                self.lines.push(parse_ansi_line(line, style));
+                let l = parse_ansi_line(line, style);
+                styled_lines.push(l.clone());
+                self.lines.push(l);
             }
         } else {
             for line in &art_lines[..end] {
-                self.lines
-                    .push(Line::from(Span::styled(line.to_string(), style)));
+                let l = Line::from(Span::styled(line.to_string(), style));
+                styled_lines.push(l.clone());
+                self.lines.push(l);
             }
+        }
+        let line_count = styled_lines.len();
+        if line_count > 0 {
+            self.figlet_headings.push(FigletHeadingMeta {
+                line_index,
+                line_count,
+                styled_lines,
+            });
         }
     }
 
@@ -1166,6 +1220,7 @@ impl<'a> MdConverter<'a> {
                     .take()
                     .or_else(|| self.default_header.clone())
                     .unwrap_or_default(),
+                figlet_headings: std::mem::take(&mut self.figlet_headings),
             });
         }
         self.slides
@@ -1205,6 +1260,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
                 line_height: 1.2,
                 bg_fill: false,
                 header: Vec::new(),
+                figlet_headings: Vec::new(),
             }
         }
         None => Slide {
@@ -1218,6 +1274,7 @@ fn split_two_column(lines: Vec<Line<'static>>) -> Slide {
             line_height: 1.2,
             bg_fill: false,
             header: Vec::new(),
+            figlet_headings: Vec::new(),
         },
     }
 }

@@ -3,6 +3,7 @@ use ratatui::{
     buffer::Cell,
     layout::{Position, Size},
     style::{Color, Modifier},
+    text::Line,
 };
 use ratride::render::ImagePlacement;
 use std::io;
@@ -88,6 +89,22 @@ impl CanvasBackend {
 
     pub fn cell_height(&self) -> f64 {
         self.cell_height
+    }
+
+    pub fn font_size(&self) -> f64 {
+        self.font_size
+    }
+
+    pub fn ctx(&self) -> &CanvasRenderingContext2d {
+        &self.ctx
+    }
+
+    /// Fill a rectangle with the current background color.
+    pub fn fill_bg_rect(&self, x: f64, y: f64, w: f64, h: f64) {
+        if let Some(ref bg) = self.bg_css {
+            self.ctx.set_fill_style_str(bg);
+            self.ctx.fill_rect(x, y, w, h);
+        }
     }
 
     pub fn set_line_height(&mut self, lh: f64) {
@@ -233,6 +250,65 @@ impl CanvasBackend {
             let last_row_y = (self.rows - 1) as f64 * self.cell_height;
             self.ctx.fill_rect(grid_w, last_row_y, css_w - grid_w, self.cell_height);
         }
+    }
+
+    /// Render figlet styled lines to an offscreen canvas and return as HtmlImageElement.
+    /// Uses line_height=1.0 so figlet art is tightly packed regardless of slide line_height.
+    pub fn render_figlet_to_image(&self, lines: &[Line<'_>]) -> Option<HtmlImageElement> {
+        if lines.is_empty() {
+            return None;
+        }
+        let document = web_sys::window()?.document()?;
+        let offscreen: HtmlCanvasElement = document
+            .create_element("canvas")
+            .ok()?
+            .dyn_into()
+            .ok()?;
+
+        // Measure the max width across all lines (in characters)
+        let max_chars: usize = lines.iter().map(|l| l.width()).max().unwrap_or(0);
+        let px_w = (max_chars as f64 * self.cell_width * self.dpr).ceil();
+        let px_h = (lines.len() as f64 * self.font_size * self.dpr).ceil();
+        offscreen.set_width(px_w as u32);
+        offscreen.set_height(px_h as u32);
+
+        let ctx: CanvasRenderingContext2d = offscreen
+            .get_context("2d")
+            .ok()??
+            .dyn_into()
+            .ok()?;
+        let _ = ctx.set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
+        let font = format!("{}px monospace", self.font_size);
+        ctx.set_font(&font);
+
+        let baseline_offset = self.font_size * 0.85;
+        let line_h = self.font_size; // line_height = 1.0
+
+        for (row, line) in lines.iter().enumerate() {
+            let y = row as f64 * line_h;
+            let mut x = 0.0;
+            for span in &line.spans {
+                let fg = span.style.fg.unwrap_or(Color::White);
+                let css = Self::color_to_css(fg, "#cdd6f4");
+                ctx.set_fill_style_str(&css);
+                let text = span.content.as_ref();
+                let _ = ctx.fill_text(text, x, y + baseline_offset);
+                x += span.width() as f64 * self.cell_width;
+            }
+        }
+
+        let data_url = offscreen.to_data_url().ok()?;
+        let img = HtmlImageElement::new().ok()?;
+        img.set_src(&data_url);
+        Some(img)
+    }
+
+    /// CSS pixel dimensions of a figlet image rendered at line_height=1.0.
+    pub fn figlet_image_css_size(&self, lines: &[Line<'_>]) -> (f64, f64) {
+        let max_chars: usize = lines.iter().map(|l| l.width()).max().unwrap_or(0);
+        let w = max_chars as f64 * self.cell_width;
+        let h = lines.len() as f64 * self.font_size;
+        (w, h)
     }
 
     fn color_to_css(color: Color, fallback: &str) -> String {
