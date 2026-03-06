@@ -106,7 +106,9 @@ impl WebApp {
     }
 
     pub fn init(&mut self) {
-        self.process_figlet_headings();
+        if self.is_mobile {
+            self.process_figlet_headings();
+        }
         self.effect = self.create_transition();
     }
 
