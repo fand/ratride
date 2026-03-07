@@ -391,6 +391,20 @@ You can set text color or gradient like:
 
 ref. https://github.com/fand/figrat
 
+---
+<!-- figlet: small -->
+<!-- figlet_color: 99FFFF,ff99ff y -->
+
+## Figlet image
+
+To display figlet headings in small screen, Ratride converts headings to images.
+
+By default, this conversion is only enabled for mobile devices.
+You can control the behavior with `figlet_web` option:
+
+- `figlet_web: image`: Convert heading to images on all devices
+- `figlet_web: text`: Show raw figlet output as text
+- `figlet_web: original`: Disable figlet
 
 ---
 <!-- layout: center -->
@@ -535,7 +549,7 @@ $ ratride slide.md --serve
 ---
 <!-- layout: center -->
 <!-- transition: dissolve -->
-<!-- figlet: smslant -->
+<!-- figlet: slant -->
 
 # Thank you!
 
