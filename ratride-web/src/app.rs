@@ -7,7 +7,7 @@ use ratatui::{
     style::Style,
     text::Span,
 };
-use ratride::markdown::{FigletFn, FigletImageMode, Frontmatter, Slide, SlideLayout, parse_slides};
+use ratride::markdown::{FigletFn, FigletWebMode, Frontmatter, Slide, SlideLayout, parse_slides};
 use ratride::render::{self, ImagePlacement};
 use ratride::theme::Theme;
 use std::collections::{HashMap, HashSet};
@@ -52,7 +52,7 @@ pub struct WebApp {
     /// Per-slide figlet heading images.
     figlet_images: Vec<Vec<FigletImage>>,
     is_mobile: bool,
-    figlet_image_mode: FigletImageMode,
+    figlet_web_mode: FigletWebMode,
     /// Timestamp when figlet wipe started (after transition ends).
     figlet_wipe_start: Option<f64>,
 }
@@ -88,7 +88,7 @@ impl WebApp {
         }
 
         let figlet_images: Vec<Vec<FigletImage>> = (0..len).map(|_| Vec::new()).collect();
-        let figlet_image_mode = frontmatter.figlet_image.clone().unwrap_or_default();
+        let figlet_web_mode = frontmatter.figlet_web.clone().unwrap_or_default();
 
         Self {
             terminal,
@@ -109,16 +109,16 @@ impl WebApp {
             overlay_last_scroll: u16::MAX,
             figlet_images,
             is_mobile,
-            figlet_image_mode,
+            figlet_web_mode,
             figlet_wipe_start: None,
         }
     }
 
     pub fn init(&mut self) {
-        let should_image = match self.figlet_image_mode {
-            FigletImageMode::Always => true,
-            FigletImageMode::Never => false,
-            FigletImageMode::MobileOnly => self.is_mobile,
+        let should_image = match self.figlet_web_mode {
+            FigletWebMode::Image => true,
+            FigletWebMode::Auto => self.is_mobile,
+            FigletWebMode::Text | FigletWebMode::Original => false,
         };
         if should_image {
             self.process_figlet_headings();

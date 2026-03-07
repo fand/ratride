@@ -33,16 +33,18 @@ fn parse_header_item(s: &str) -> HeaderItem {
     }
 }
 
-/// Controls whether figlet headings are rendered as images (web only).
+/// Controls how figlet headings are rendered on the web.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub enum FigletImageMode {
-    /// Render figlet headings as images only on mobile (default).
+pub enum FigletWebMode {
+    /// mobile=image, pc=text (default).
     #[default]
-    MobileOnly,
+    Auto,
     /// Always render figlet headings as images.
-    Always,
-    /// Never render figlet headings as images (use text rendering).
-    Never,
+    Image,
+    /// Always render figlet headings as text.
+    Text,
+    /// Skip figlet; show original markdown headings.
+    Original,
 }
 
 /// File-wide defaults parsed from YAML frontmatter (`--- ... ---`).
@@ -56,15 +58,22 @@ pub struct Frontmatter {
     /// `Some(None)` = default figlet font, `Some(Some("slant"))` = named font.
     pub figlet: Option<Option<String>>,
     pub bg_fill: Option<bool>,
-    /// Whether to enable figlet on mobile. Default: true.
-    pub figlet_mobile: Option<bool>,
     /// Color argument for figrat. When set, `figrat --color "<value>"` is used
     /// instead of `figlet`.
     pub figlet_color: Option<String>,
     /// Header items displayed at top-right, overlaying the content area.
     pub header: Option<Vec<HeaderItem>>,
-    /// Whether to render figlet headings as images (web only).
-    pub figlet_image: Option<FigletImageMode>,
+    /// How figlet headings are rendered on the web.
+    pub figlet_web: Option<FigletWebMode>,
+}
+
+fn parse_figlet_web_mode(value: &str) -> FigletWebMode {
+    match value {
+        "image" => FigletWebMode::Image,
+        "text" => FigletWebMode::Text,
+        "original" => FigletWebMode::Original,
+        _ => FigletWebMode::Auto,
+    }
 }
 
 /// Extract YAML frontmatter from the beginning of a markdown string.
@@ -185,15 +194,8 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                 "bg_fill" => {
                     fm.bg_fill = Some(value == "true");
                 }
-                "figlet_mobile" => {
-                    fm.figlet_mobile = Some(value == "true");
-                }
-                "figlet_image" => {
-                    fm.figlet_image = Some(match value {
-                        "true" => FigletImageMode::Always,
-                        "false" => FigletImageMode::Never,
-                        _ => FigletImageMode::MobileOnly,
-                    });
+                "figlet_web" => {
+                    fm.figlet_web = Some(parse_figlet_web_mode(value));
                 }
                 "figlet_color" => {
                     if !value.is_empty() {
@@ -362,7 +364,7 @@ enum CommentDirective {
     Layout(SlideLayout),
     Transition(TransitionKind),
     Figlet(Option<String>),
-    FigletMobile(bool),
+    FigletWeb(FigletWebMode),
     FigletColor(String),
     ImageMaxWidth(f64),
     LineHeight(f64),
@@ -404,8 +406,8 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
     if let Some(font) = inner.strip_prefix("figlet:") {
         return Some(CommentDirective::Figlet(Some(font.trim().to_string())));
     }
-    if let Some(value) = inner.strip_prefix("figlet_mobile:") {
-        return Some(CommentDirective::FigletMobile(value.trim() == "true"));
+    if let Some(value) = inner.strip_prefix("figlet_web:") {
+        return Some(CommentDirective::FigletWeb(parse_figlet_web_mode(value.trim())));
     }
     if let Some(value) = inner.strip_prefix("figlet_color:") {
         let value = value.trim();
@@ -544,10 +546,8 @@ struct MdConverter<'a> {
     figlet_fn: Option<&'a FigletFn>,
     // Default theme for resetting after each slide
     default_theme: Theme,
-    // Mobile detection
-    is_mobile: bool,
-    default_figlet_mobile: bool,
-    pending_figlet_mobile: Option<bool>,
+    default_figlet_web: FigletWebMode,
+    pending_figlet_web: Option<FigletWebMode>,
     // Figrat color
     default_figlet_color: Option<String>,
     pending_figlet_color: Option<String>,
@@ -567,7 +567,7 @@ impl<'a> MdConverter<'a> {
         theme: Theme,
         frontmatter: &Frontmatter,
         figlet_fn: Option<&'a FigletFn>,
-        is_mobile: bool,
+        _is_mobile: bool,
     ) -> Self {
         let base_style = Style::default().fg(theme.fg);
         let syntect_theme = theme.syntect_theme();
@@ -614,9 +614,8 @@ impl<'a> MdConverter<'a> {
             pending_bg_fill: None,
             figlet_fn,
             default_theme,
-            is_mobile,
-            default_figlet_mobile: frontmatter.figlet_mobile.unwrap_or(true),
-            pending_figlet_mobile: None,
+            default_figlet_web: frontmatter.figlet_web.clone().unwrap_or_default(),
+            pending_figlet_web: None,
             default_figlet_color: frontmatter.figlet_color.clone(),
             pending_figlet_color: None,
             default_header: frontmatter.header.clone(),
@@ -671,7 +670,7 @@ impl<'a> MdConverter<'a> {
         let lines = std::mem::take(&mut self.lines);
         let images = std::mem::take(&mut self.images);
         self.pending_figlet = None;
-        self.pending_figlet_mobile = None;
+        self.pending_figlet_web = None;
         self.pending_figlet_color = None;
         let transition = self
             .pending_transition
@@ -774,8 +773,8 @@ impl<'a> MdConverter<'a> {
                 Some(CommentDirective::Figlet(font)) => {
                     self.pending_figlet = Some(font);
                 }
-                Some(CommentDirective::FigletMobile(enabled)) => {
-                    self.pending_figlet_mobile = Some(enabled);
+                Some(CommentDirective::FigletWeb(mode)) => {
+                    self.pending_figlet_web = Some(mode);
                 }
                 Some(CommentDirective::FigletColor(color)) => {
                     self.pending_figlet_color = Some(color);
@@ -830,10 +829,11 @@ impl<'a> MdConverter<'a> {
                 };
                 self.semantic_heading_line = self.lines.len();
                 let has_figlet = self.pending_figlet.is_some() || self.default_figlet.is_some();
-                let figlet_mobile = self
-                    .pending_figlet_mobile
-                    .unwrap_or(self.default_figlet_mobile);
-                let use_figlet = has_figlet && !(self.is_mobile && !figlet_mobile);
+                let figlet_web = self
+                    .pending_figlet_web
+                    .clone()
+                    .unwrap_or(self.default_figlet_web.clone());
+                let use_figlet = has_figlet && figlet_web != FigletWebMode::Original;
                 if use_figlet {
                     // Apply default figlet if no per-slide directive
                     if self.pending_figlet.is_none() {
