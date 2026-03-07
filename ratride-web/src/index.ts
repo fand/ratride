@@ -2,8 +2,8 @@ import wasmInit, { RatRide } from "../pkg/ratride_web.js";
 
 const wasmUrl = new URL("../pkg/ratride_web_bg.wasm", import.meta.url);
 
-let wasmReady;
-function ensureInit() {
+let wasmReady: Promise<unknown>;
+function ensureInit(): Promise<unknown> {
   if (!wasmReady) {
     wasmReady = wasmInit({ module_or_path: wasmUrl });
   }
@@ -12,12 +12,20 @@ function ensureInit() {
 
 let counter = 0;
 
-/**
- * @param {string} md
- * @param {{ parent?: HTMLElement, fontSize?: number, theme?: string }} [config]
- * @returns {Promise<{ destroy(): void }>}
- */
-export async function run(md, config = {}) {
+export interface RatrideConfig {
+  parent?: HTMLElement;
+  fontSize?: number;
+  theme?: string;
+}
+
+export interface RatrideInstance {
+  destroy(): void;
+}
+
+export async function run(
+  md: string,
+  config: RatrideConfig = {},
+): Promise<RatrideInstance> {
   await ensureInit();
 
   const { parent = document.body, theme } = config;
@@ -58,7 +66,7 @@ export async function run(md, config = {}) {
   // can apply them inside tick(). This avoids the flicker caused by setting
   // canvas.width (which clears the bitmap) in a separate callback from the
   // redraw that happens in tick().
-  function updateTargetSize() {
+  function updateTargetSize(): void {
     const isBody = parent === document.body;
     const w = isBody ? window.innerWidth : parent.clientWidth;
     const h = isBody ? window.innerHeight : parent.clientHeight;
@@ -105,7 +113,7 @@ export async function run(md, config = {}) {
   const MOVE_THRESHOLD = 10; // px to distinguish tap from scroll
   const TAP_MAX_DURATION = 200; // ms
 
-  canvas.addEventListener("touchstart", (e) => {
+  canvas.addEventListener("touchstart", (e: TouchEvent) => {
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
     touchStartX = t.clientX;
@@ -116,7 +124,7 @@ export async function run(md, config = {}) {
     accumulatedScrollY = 0;
   }, { passive: false });
 
-  canvas.addEventListener("touchmove", (e) => {
+  canvas.addEventListener("touchmove", (e: TouchEvent) => {
     if (e.touches.length !== 1) return;
     e.preventDefault();
     const t = e.touches[0];
@@ -144,7 +152,7 @@ export async function run(md, config = {}) {
     }
   }, { passive: false });
 
-  canvas.addEventListener("touchend", (e) => {
+  canvas.addEventListener("touchend", (e: TouchEvent) => {
     if (didScroll || e.timeStamp - touchStartTime >= TAP_MAX_DURATION) return;
     // Tap: check if in left/right 40% zone
     const rect = canvas.getBoundingClientRect();

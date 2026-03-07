@@ -3,28 +3,32 @@
   "version": "1.0.0",
   "description": "WASM-based markdown slide presenter",
   "type": "module",
-  "main": "src/index.js",
-  "types": "src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.js",
-      "types": "./src/index.d.ts"
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "files": [
-    "src/index.js",
-    "src/index.d.ts",
+    "dist",
     "pkg/ratride_web.js",
     "pkg/ratride_web.d.ts",
     "pkg/ratride_web_bg.wasm",
     "pkg/ratride_web_bg.wasm.d.ts"
   ],
   "scripts": {
-    "build": "wasm-pack build . --target web --out-dir pkg",
+    "build:wasm": "wasm-pack build . --target web --out-dir pkg",
+    "build:ts": "tsc",
+    "build": "npm run build:wasm && npm run build:ts",
+    "test": "tsc --noEmit",
     "prepack": "npm run build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {}
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
 }
