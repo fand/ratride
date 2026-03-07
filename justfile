@@ -25,9 +25,9 @@ pack:
 # Release dry-run
 release-dry level:
     cargo release {{ level }}
-    cd ratride-web && npm publish --dry-run
+    cd ratride-web && npx np {{ level }} --preview
 
 # Release cargo crate + npm package
 release level:
     cargo release {{ level }} --execute
-    cd ratride-web && npm version {{ level }} && npm publish
+    cd ratride-web && npx np {{ level }}
