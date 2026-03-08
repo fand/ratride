@@ -3,7 +3,7 @@ use ratatui::style::Color;
 use tachyonfx::{Effect, Interpolation, Motion, fx};
 
 use crate::color::{anim_color, blend_color, hue_to_rgb};
-use crate::markdown::TransitionKind;
+use crate::markdown::{SlideDirection, TransitionKind};
 
 pub fn create_transition(
     kind: &TransitionKind,
@@ -16,7 +16,78 @@ pub fn create_transition(
 ) -> Option<Effect> {
     Some(match kind {
         TransitionKind::None => return None,
-        TransitionKind::SlideIn => fx::fade_from_fg(bg, (400, Interpolation::QuadOut)),
+        TransitionKind::Slide(dir) => {
+            let prev = prev_buf.clone();
+            let horizontal = matches!(dir, SlideDirection::Right | SlideDirection::Left);
+            let positive = matches!(dir, SlideDirection::Right | SlideDirection::Down);
+            fx::effect_fn_buf(
+                (),
+                (400, Interpolation::QuadOut),
+                move |_state, ctx, buf| {
+                    let alpha = ctx.alpha();
+                    let area = ctx.area;
+                    let width = area.width;
+                    let height = area.height;
+
+                    if horizontal {
+                        let shift = ((1.0 - alpha) * width as f32) as u16;
+                        for y in area.y..area.y + height {
+                            let original: Vec<_> = (area.x..area.x + width)
+                                .map(|x| buf[(x, y)].clone())
+                                .collect();
+                            for x in area.x..area.x + width {
+                                let col = x - area.x;
+                                let cell = &mut buf[(x, y)];
+                                let src = if positive {
+                                    if col + shift < width { Some((col + shift) as usize) } else { None }
+                                } else {
+                                    if col >= shift { Some((col - shift) as usize) } else { None }
+                                };
+                                if let Some(s) = src {
+                                    *cell = original[s].clone();
+                                } else if let Some(old) =
+                                    prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                {
+                                    *cell = old.clone();
+                                } else {
+                                    cell.reset();
+                                }
+                            }
+                        }
+                    } else {
+                        let shift = ((1.0 - alpha) * height as f32) as u16;
+                        let original: Vec<Vec<_>> = (area.y..area.y + height)
+                            .map(|y| {
+                                (area.x..area.x + width)
+                                    .map(|x| buf[(x, y)].clone())
+                                    .collect()
+                            })
+                            .collect();
+                        for y in area.y..area.y + height {
+                            let row = y - area.y;
+                            let src_row = if positive {
+                                if row + shift < height { Some(row + shift) } else { None }
+                            } else {
+                                if row >= shift { Some(row - shift) } else { None }
+                            };
+                            for x in area.x..area.x + width {
+                                let col = (x - area.x) as usize;
+                                let cell = &mut buf[(x, y)];
+                                if let Some(sr) = src_row {
+                                    *cell = original[sr as usize][col].clone();
+                                } else if let Some(old) =
+                                    prev.as_ref().and_then(|pb| pb.cell((x, y)))
+                                {
+                                    *cell = old.clone();
+                                } else {
+                                    cell.reset();
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        }
         TransitionKind::Fade => fx::fade_from_fg(bg, (600, Interpolation::SineOut)),
         TransitionKind::Dissolve => fx::dissolve((500, Interpolation::Linear)).reversed(),
         TransitionKind::Coalesce => fx::coalesce((500, Interpolation::QuadOut)),

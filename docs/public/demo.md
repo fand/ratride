@@ -6,7 +6,7 @@ header:
 ---
 <!-- layout: center -->
 <!-- figlet -->
-<!-- figlet_color: ff6666,ff66ff,33ffff -->
+<!-- figlet_color: ff6666,ff99ff,5577ff -->
 <!-- image_max_width: 40% -->
 
 ![](./ratride_logo_white.png)
@@ -30,6 +30,7 @@ in Markdown,
 <!-- transition: lines-rgb -->
 <!-- layout: center -->
 <!-- figlet -->
+<!-- figlet_color: ff99ff,3388ff 45d -->
 
 # with
 # Animation!
@@ -46,6 +47,8 @@ in Markdown,
 <!-- transition: lines-rgb -->
 <!-- layout: center -->
 <!-- figlet -->
+<!-- figlet_color: ff9922,3399FF y -->
+
 # and the
 # Web
 
@@ -408,8 +411,9 @@ You can control the behavior with `figlet_web` option:
 
 ---
 <!-- layout: center -->
-<!-- figlet -->
 <!-- transition: lines-rgb -->
+<!-- figlet -->
+<!-- figlet_color: ff0000,00ffff -->
 
 # Transitions
 
@@ -417,16 +421,60 @@ Ratride supports tachyonFX-based transitions.
 
 ---
 
-<!-- transition: slide-in -->
+<!-- transition: slide -->
 
-## Slide-In Transition
+## Slide Transition
 
-This slide uses the **slide-in** transition (default).
+This slide uses the **slide** transition (default).
 
-Content fades in from the background color.
+By default, content slide in from the left.
+You can change the direction with args:
+
+- `slide left`: right to left
+- `slide up`: bottom to top
+- `slide down`: top to bottom
 
 ---
+<!-- layout: center -->
+<!-- figlet: small -->
+<!-- figlet_color: ff88ff -->
+<!-- transition: slide -->
 
+### Slide
+
+This slide uses `slide` (default)
+
+---
+<!-- layout: center -->
+<!-- figlet: small -->
+<!-- figlet_color: 88ffff -->
+<!-- transition: slide left -->
+
+### Slide left
+
+This slide uses `slide left`
+
+---
+<!-- layout: center -->
+<!-- figlet: small -->
+<!-- figlet_color: ffff88 -->
+<!-- transition: slide up -->
+
+### Slide up
+
+This slide uses `slide up`
+
+---
+<!-- layout: center -->
+<!-- figlet: small -->
+<!-- figlet_color: 9999ff -->
+<!-- transition: slide down -->
+
+### Slide down
+
+This slide uses the **slide** transition with `down`.
+
+---
 <!-- transition: lines -->
 
 ## Lines Transition
@@ -549,7 +597,8 @@ $ ratride slide.md --serve
 ---
 <!-- layout: center -->
 <!-- transition: dissolve -->
-<!-- figlet: slant -->
+<!-- figlet -->
+<!-- figlet_color: ff6666,ff99ff,5577ff -->
 
 # Thank you!
 

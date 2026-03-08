@@ -281,7 +281,11 @@ impl CanvasBackend {
         let font = format!("{}px monospace", self.font_size);
         ctx.set_font(&font);
 
-        let baseline_offset = self.font_size * 0.85;
+        let baseline_offset = ctx
+            .measure_text("M")
+            .ok()
+            .map(|m| m.actual_bounding_box_ascent())
+            .unwrap_or(self.font_size * 0.85);
         let line_h = self.font_size; // line_height = 1.0
 
         for (row, line) in lines.iter().enumerate() {
@@ -291,9 +295,12 @@ impl CanvasBackend {
                 let fg = span.style.fg.unwrap_or(Color::White);
                 let css = Self::color_to_css(fg, "#cdd6f4");
                 ctx.set_fill_style_str(&css);
-                let text = span.content.as_ref();
-                let _ = ctx.fill_text(text, x, y + baseline_offset);
-                x += span.width() as f64 * self.cell_width;
+                let mut buf = [0u8; 4];
+                for ch in span.content.chars() {
+                    let s = ch.encode_utf8(&mut buf);
+                    let _ = ctx.fill_text(s, x, y + baseline_offset);
+                    x += self.cell_width;
+                }
             }
         }
 

@@ -4,15 +4,31 @@ use ratatui::{
     Terminal,
     buffer::Buffer,
     layout::{Constraint, Flex, Layout, Margin, Rect},
-    style::Style,
+    style::{Color, Style},
     text::Span,
 };
-use ratride::markdown::{FigletFn, FigletWebMode, Frontmatter, Slide, SlideLayout, parse_slides};
+use ratride::markdown::{
+    FigletFn, FigletWebMode, Frontmatter, Slide, SlideDirection, SlideLayout, TransitionKind,
+    parse_slides,
+};
 use ratride::render::{self, ImagePlacement};
 use ratride::theme::Theme;
 use std::collections::{HashMap, HashSet};
 use tachyonfx::{Duration, Effect, EffectRenderer};
 use web_sys::HtmlImageElement;
+
+/// Parse the first hex color from a figlet_color value like "ff0000,ffff00,00ffff".
+fn parse_first_hex_color(s: &str) -> Option<Color> {
+    let first = s.split(|c: char| c == ',' || c == ' ').next()?;
+    if first.len() < 6 {
+        return None;
+    }
+    let hex = &first[..6];
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(Color::Rgb(r, g, b))
+}
 
 const FRAME_DURATION_MS: f64 = 16.0; // ~60fps
 const LINE_DUR_MS: f32 = 600.0;
@@ -55,6 +71,8 @@ pub struct WebApp {
     figlet_web_mode: FigletWebMode,
     /// Timestamp when figlet wipe started (after transition ends).
     figlet_wipe_start: Option<f64>,
+    /// Wipe direction for figlet images (derived from slide transition).
+    figlet_wipe_dir: SlideDirection,
 }
 
 impl WebApp {
@@ -111,6 +129,7 @@ impl WebApp {
             is_mobile,
             figlet_web_mode,
             figlet_wipe_start: None,
+            figlet_wipe_dir: SlideDirection::default(),
         }
     }
 
@@ -168,12 +187,18 @@ impl WebApp {
                 let end = (start + heading.line_count).min(slide.content.lines.len());
                 slide.content.lines.drain(start..end);
 
-                // Extract foreground color from first span of figlet heading
+                // Extract foreground color: prefer figlet_color directive, fall back to first span
                 let fg_color = heading
-                    .styled_lines
-                    .first()
-                    .and_then(|l| l.spans.first())
-                    .and_then(|s| s.style.fg);
+                    .figlet_color
+                    .as_deref()
+                    .and_then(parse_first_hex_color)
+                    .or_else(|| {
+                        heading
+                            .styled_lines
+                            .first()
+                            .and_then(|l| l.spans.first())
+                            .and_then(|s| s.style.fg)
+                    });
                 let block_style = match fg_color {
                     Some(c) => Style::default().fg(c),
                     None => Style::default(),
@@ -266,6 +291,10 @@ impl WebApp {
         if page < self.total_pages() && page != self.current_page {
             self.current_page = page;
             self.figlet_wipe_start = None;
+            self.figlet_wipe_dir = match &self.slides[page].transition {
+                TransitionKind::Slide(dir) => dir.clone(),
+                _ => SlideDirection::default(),
+            };
             self.effect = self.create_transition();
         }
     }
@@ -625,12 +654,30 @@ impl WebApp {
             let center_y = px_y + (box_h - draw_h).max(0.0) / 2.0;
 
             if wipe_progress < 1.0 {
-                // Left-to-right wipe: clear bg & draw image only in revealed portion,
-                // leaving placeholder visible on the right side.
-                let clip_w = (center_x - px_x + 1.0) + draw_w * wipe_progress;
+                // Directional wipe: clip rect matches slide transition direction.
+                let (clip_x, clip_y, clip_w, clip_h) = match self.figlet_wipe_dir {
+                    SlideDirection::Right => {
+                        let w = (center_x - px_x + 1.0) + draw_w * wipe_progress;
+                        (px_x - 1.0, px_y - 1.0, w, box_h + 2.0)
+                    }
+                    SlideDirection::Left => {
+                        let w = (center_x - px_x + 1.0) + draw_w * wipe_progress;
+                        let x = px_x - 1.0 + content_css_w + 2.0 - w;
+                        (x, px_y - 1.0, w, box_h + 2.0)
+                    }
+                    SlideDirection::Up => {
+                        let h = box_h * wipe_progress;
+                        let y = px_y - 1.0 + box_h + 2.0 - (h + 2.0);
+                        (px_x - 1.0, y, content_css_w + 2.0, h + 2.0)
+                    }
+                    SlideDirection::Down => {
+                        let h = box_h * wipe_progress;
+                        (px_x - 1.0, px_y - 1.0, content_css_w + 2.0, h + 2.0)
+                    }
+                };
                 ctx.save();
                 ctx.begin_path();
-                ctx.rect(px_x - 1.0, px_y - 1.0, clip_w, box_h + 2.0);
+                ctx.rect(clip_x, clip_y, clip_w, clip_h);
                 ctx.clip();
                 backend.fill_bg_rect(px_x - 1.0, px_y - 1.0, content_css_w + 2.0, box_h + 2.0);
                 let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(

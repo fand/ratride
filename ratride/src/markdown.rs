@@ -161,17 +161,7 @@ pub fn parse_frontmatter(input: &str) -> (Frontmatter, &str) {
                     });
                 }
                 "transition" => {
-                    fm.transition = Some(match value {
-                        "fade" => TransitionKind::Fade,
-                        "dissolve" => TransitionKind::Dissolve,
-                        "coalesce" => TransitionKind::Coalesce,
-                        "sweep" | "sweep-in" => TransitionKind::SweepIn,
-                        "lines" => TransitionKind::Lines,
-                        "lines-cross" => TransitionKind::LinesCross,
-                        "lines-rgb" => TransitionKind::LinesRgb,
-                        "slide-rgb" => TransitionKind::SlideRgb,
-                        _ => TransitionKind::SlideIn,
-                    });
+                    fm.transition = Some(parse_transition_kind(value));
                 }
                 "image_max_width" => {
                     let value = value.trim_end_matches('%');
@@ -241,10 +231,19 @@ pub enum SlideLayout {
 }
 
 #[derive(Clone, Debug, Default)]
+pub enum SlideDirection {
+    #[default]
+    Right,
+    Left,
+    Up,
+    Down,
+}
+
+#[derive(Clone, Debug, Default)]
 pub enum TransitionKind {
     #[default]
     None,
-    SlideIn,
+    Slide(SlideDirection),
     Fade,
     Dissolve,
     Coalesce,
@@ -282,6 +281,8 @@ pub struct FigletHeadingMeta {
     pub line_count: usize,
     /// The rendered ASCII art lines (with colors), saved for image rendering.
     pub styled_lines: Vec<Line<'static>>,
+    /// Raw figlet_color directive value (e.g. "ff0000,ffff00,00ffff").
+    pub figlet_color: Option<String>,
 }
 
 /// Image reference found in a slide.
@@ -373,6 +374,30 @@ enum CommentDirective {
     Header(Vec<HeaderItem>),
 }
 
+fn parse_transition_kind(s: &str) -> TransitionKind {
+    let parts: Vec<&str> = s.splitn(2, ' ').collect();
+    match parts[0] {
+        "slide" | "slide-in" => {
+            let dir = parts.get(1).map(|d| match *d {
+                "left" => SlideDirection::Left,
+                "up" | "top" => SlideDirection::Up,
+                "down" | "bottom" => SlideDirection::Down,
+                _ => SlideDirection::Right,
+            }).unwrap_or_default();
+            TransitionKind::Slide(dir)
+        }
+        "fade" => TransitionKind::Fade,
+        "dissolve" => TransitionKind::Dissolve,
+        "coalesce" => TransitionKind::Coalesce,
+        "sweep" | "sweep-in" => TransitionKind::SweepIn,
+        "lines" => TransitionKind::Lines,
+        "lines-cross" => TransitionKind::LinesCross,
+        "lines-rgb" => TransitionKind::LinesRgb,
+        "slide-rgb" => TransitionKind::SlideRgb,
+        _ => TransitionKind::Slide(SlideDirection::default()),
+    }
+}
+
 fn parse_comment(html: &str) -> Option<CommentDirective> {
     let trimmed = html.trim();
     let inner = trimmed.strip_prefix("<!--")?.strip_suffix("-->")?;
@@ -387,18 +412,7 @@ fn parse_comment(html: &str) -> Option<CommentDirective> {
         return Some(CommentDirective::Layout(layout));
     }
     if let Some(value) = inner.strip_prefix("transition:") {
-        let transition = match value.trim() {
-            "fade" => TransitionKind::Fade,
-            "dissolve" => TransitionKind::Dissolve,
-            "coalesce" => TransitionKind::Coalesce,
-            "sweep" | "sweep-in" => TransitionKind::SweepIn,
-            "lines" => TransitionKind::Lines,
-            "lines-cross" => TransitionKind::LinesCross,
-            "lines-rgb" => TransitionKind::LinesRgb,
-            "slide-rgb" => TransitionKind::SlideRgb,
-            _ => TransitionKind::SlideIn,
-        };
-        return Some(CommentDirective::Transition(transition));
+        return Some(CommentDirective::Transition(parse_transition_kind(value.trim())));
     }
     if inner == "figlet" {
         return Some(CommentDirective::Figlet(None));
@@ -1180,6 +1194,7 @@ impl<'a> MdConverter<'a> {
                 line_index,
                 line_count,
                 styled_lines,
+                figlet_color: color.map(|s| s.to_string()),
             });
         }
     }

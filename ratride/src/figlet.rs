@@ -249,6 +249,14 @@ fn parse_hex(s: &str) -> figrat::color::palette::Rgba {
     figrat::color::palette::Rgba::rgb(r, g, b)
 }
 
+/// Parse angle tokens like "90d", "90deg", "45d", "45deg" into degrees.
+fn parse_angle_token(s: &str) -> Option<f32> {
+    let num = s
+        .strip_suffix("deg")
+        .or_else(|| s.strip_suffix("d"))?;
+    num.parse::<f32>().ok()
+}
+
 fn parse_color_spec(
     s: &str,
 ) -> (
@@ -276,6 +284,16 @@ fn parse_color_spec(
             tokens[..tokens.len() - 1].join(" "),
             GradientDirection::Horizontal,
         ),
+        Some(last) => {
+            if let Some(deg) = parse_angle_token(last) {
+                (
+                    tokens[..tokens.len() - 1].join(" "),
+                    GradientDirection::Angled(deg),
+                )
+            } else {
+                (tokens.join(" "), GradientDirection::Horizontal)
+            }
+        }
         _ => (tokens.join(" "), GradientDirection::Horizontal),
     };
 
