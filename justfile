@@ -22,12 +22,22 @@ build-docs:
 pack:
     cd ratride-web && npm pack --dry-run
 
+# Get current version from Cargo.toml
+_version:
+    @cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name=="ratride") | .version'
+
 # Release dry-run
 release-dry level:
-    cargo release {{ level }}
-    cd ratride-web && npx np {{ level }} --preview
+    cargo release version {{ level }}
+    @echo "npm: would bump ratride-web to {{ level }}"
 
 # Release cargo crate + npm package
 release level:
-    cargo release {{ level }} --execute
-    cd ratride-web && npx np {{ level }}
+    cargo release version {{ level }} --execute --no-confirm
+    cd ratride-web && npm version {{ level }} --no-git-tag-version
+    git add -A
+    git commit -m "chore: release v$(just _version)"
+    git tag "v$(just _version)"
+    cargo publish -p ratride
+    cd ratride-web && npm publish
+    git push && git push --tags
