@@ -73,9 +73,10 @@ pub fn draw_default(
     let mut placements = Vec::new();
     for img in &slide.images {
         let li = remap_index(img.line_index, &index_map);
+        let y_off = wrapped_y_offset(&content, li, content_area.width);
         if let Some(p) = compute_image_placement(
             content_area,
-            li,
+            y_off,
             img.height,
             scroll,
             &img.path,
@@ -117,9 +118,10 @@ pub fn draw_center(
     let mut placements = Vec::new();
     for img in &slide.images {
         let li = remap_index(img.line_index, &index_map);
+        let y_off = wrapped_y_offset(&content, li, centered_area.width);
         if let Some(p) = compute_image_placement(
             centered_area,
-            li,
+            y_off,
             img.height,
             scroll,
             &img.path,
@@ -420,6 +422,16 @@ pub fn wrapped_content_height(content: &Text<'_>, width: u16) -> usize {
         .sum()
 }
 
+/// Visual row offset of the line at `line_index`, accounting for wrapped lines above it.
+fn wrapped_y_offset(content: &Text<'_>, line_index: usize, width: u16) -> usize {
+    content
+        .lines
+        .iter()
+        .take(line_index)
+        .map(|l| wrapped_line_height(l, width) as usize)
+        .sum()
+}
+
 /// Pre-fill buffer rows with Line::style background for full-width code block bg.
 /// Accounts for line wrapping so backgrounds align with Paragraph's wrapped output.
 fn fill_line_backgrounds(content: &Text<'_>, scroll: u16, frame: &mut Frame, area: Rect) {
@@ -563,7 +575,7 @@ fn build_sub_line(
 /// horizontally centered based on its aspect ratio.
 fn compute_image_placement(
     content_area: Rect,
-    line_index: usize,
+    y_offset: usize,
     height: u16,
     scroll: u16,
     path: &str,
@@ -572,7 +584,7 @@ fn compute_image_placement(
     pixel_height: u32,
     max_width_percent: Option<f64>,
 ) -> Option<ImagePlacement> {
-    let y_start = line_index as i32 - scroll as i32;
+    let y_start = y_offset as i32 - scroll as i32;
     let y_end = y_start + height as i32;
 
     if y_end <= 0 || y_start >= content_area.height as i32 {
