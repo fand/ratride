@@ -6,7 +6,7 @@ header:
 <!-- layout: center -->
 <!-- figlet -->
 <!-- figlet_color: ff6666,ff99ff,5577ff -->
-<!-- image_max_width: 40% -->
+<!-- image_max_width: 50% -->
 
 ![](./ratride_logo_white.png)
 
