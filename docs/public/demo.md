@@ -1,6 +1,5 @@
 ---
 line_height: 1.2
-figlet_mobile: true
 header:
   - [GitHub](https://github.com/fand/ratride)
 ---
