@@ -1,6 +1,8 @@
 <div align="center">
-    <img src="https://raw.githubusercontent.com/fand/ratride/main/examples/ratride_demo.gif" width="540" />
-    <h1>Ratride</h1>
+    <img src="./docs/public//ratride_logo_black.png" width="540" />
+    <h1>
+      <img src="./docs/public/ratride_titile.png" width="540" />
+    </h1>
 </div>
 
 A tiny slide presenter built with [ratatui](https://github.com/ratatui/ratatui).
