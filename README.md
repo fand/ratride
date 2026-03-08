@@ -1,48 +1,53 @@
 <div align="center">
-    <img src="https://raw.githubusercontent.com/fand/ratride/main/examples/ratride_demo.gif" width="540" />
-    <h1>Ratride</h1>
+    <img src="https://raw.githubusercontent.com/fand/ratride/refs/heads/main/docs/public/ratride_screenshot.webp" width="720" alt="Ratride screenshot"/>
 </div>
 
-A tiny slide presenter built with [ratatui](https://github.com/ratatui/ratatui).
+# Ratride
+
+Markdown slideshow on Terminal + Web.
+
+Built with [Ratatui](https://github.com/ratatui/ratatui) + [TachyonFX](https://github.com/junkdog/tachyonfx).
+
+## DEMO
+
+https://amagi.dev/ratride
 
 ## Features
 
-- Markdown-based slides (`---` delimiter)
-- Layouts: default, center, two-column
-- Slide transitions (fade, dissolve, sweep, etc.)
-- Image display (iTerm2 / Kitty / Sixel)
-- HTML export
-- JS binding
-
-## Install
-
-```
-cargo install ratride
-```
+- Markdown to slide
+- Animated transitions
+- Image support
+- Web export
+- JS/Wasm binding
 
 ## Usage
 
 ```
+cargo install ratride
 ratride slides.md
 ```
 
-## Not supported
+You can write slides in Markdown syntax:
 
-Ratride DOES NOT supported following fetures:
+```md
+# Hello
 
-- Code execution
-- Mermaid / LaTeX / Typst rendering
-- Custom styling
-- Speaker notes
-- PDF export
-- Tables
-- Incremental reveal (`pause`)
-- Hot reload
+This is the first slide
 
-If you need any of them, I recommend using [presenterm](https://github.com/mfontanini/presenterm):
+---
+<!-- transition: slide -->
 
+## Hi again
+
+- This is the second slide
+- But with the transition!
+```
+
+For more detail, chek the demo slide: 
+https://amagi.dev/ratride
 
 ## LICENSE
+
 MIT
 
 ## Author
