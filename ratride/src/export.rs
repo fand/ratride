@@ -17,7 +17,7 @@ const HTML_TEMPLATE: &str = r#"<!doctype html>
     </head>
     <body>
         <script type="module">
-            import { run } from "https://unpkg.com/ratride/src/index.js?module";
+            import { run } from "https://unpkg.com/ratride@latest/dist/index.js";
             const md = await fetch("./slides.md").then((r) => r.text());
             run(md{{THEME_OPT}});
         </script>
