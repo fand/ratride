@@ -40,7 +40,8 @@ jobs:
           cp -r docs/dist/* dist/
           cp -r export-dist dist/export
 
-      - uses: cloudflare/wrangler-action@v3
+      - if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+        uses: cloudflare/wrangler-action@v3
         id: deploy
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -48,7 +49,7 @@ jobs:
           command: pages deploy dist --project-name=ratride
 
       - name: Comment deploy URL on PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |
