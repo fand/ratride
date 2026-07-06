@@ -1,6 +1,6 @@
 {
   "name": "ratride",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "WASM-based markdown slide presenter",
   "type": "module",
   "main": "dist/index.js",
