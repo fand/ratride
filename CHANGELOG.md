@@ -1,3 +1,10 @@
+# v1.2.2
+- feat: support mouse click navigation on web/PC (#24)
+- fix: use latest version URL in serve / export (#23)
+
+# v1.2.1
+- fix: image y-pos calcuation with text wrapping
+
 # v1.2.0
 - feat: slide transition
 
