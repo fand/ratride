@@ -109,9 +109,21 @@ export async function run(
   let touchStartTime = 0;
   let didScroll = false;
   let accumulatedScrollY = 0;
+  let lastTouchEndTime = 0;
   const TAP_ZONE = 0.4; // left/right 40% of canvas width
   const MOVE_THRESHOLD = 10; // px to distinguish tap from scroll
   const TAP_MAX_DURATION = 200; // ms
+  const SYNTHETIC_CLICK_WINDOW = 500; // ms to ignore clicks emulated after touch
+
+  function navigateAt(clientX: number): void {
+    const rect = canvas.getBoundingClientRect();
+    const relX = (clientX - rect.left) / rect.width;
+    if (relX <= TAP_ZONE) {
+      instance.prev_page();
+    } else if (relX >= 1 - TAP_ZONE) {
+      instance.next_page();
+    }
+  }
 
   canvas.addEventListener("touchstart", (e: TouchEvent) => {
     if (e.touches.length !== 1) return;
@@ -153,16 +165,31 @@ export async function run(
   }, { passive: false });
 
   canvas.addEventListener("touchend", (e: TouchEvent) => {
+    lastTouchEndTime = e.timeStamp;
     if (didScroll || e.timeStamp - touchStartTime >= TAP_MAX_DURATION) return;
     // Tap: check if in left/right 40% zone
-    const rect = canvas.getBoundingClientRect();
-    const relX = (touchStartX - rect.left) / rect.width;
-    if (relX <= TAP_ZONE) {
-      instance.prev_page();
-    } else if (relX >= 1 - TAP_ZONE) {
-      instance.next_page();
-    }
+    navigateAt(touchStartX);
   }, { passive: true });
+
+  // --- Mouse click navigation (desktop) ---
+  let mouseDownX = 0;
+  let mouseDownY = 0;
+
+  canvas.addEventListener("mousedown", (e: MouseEvent) => {
+    mouseDownX = e.clientX;
+    mouseDownY = e.clientY;
+  });
+
+  canvas.addEventListener("click", (e: MouseEvent) => {
+    // Skip clicks emulated from touch taps (already handled in touchend)
+    if (e.timeStamp - lastTouchEndTime < SYNTHETIC_CLICK_WINDOW) return;
+    // Skip drags
+    if (
+      Math.abs(e.clientX - mouseDownX) > MOVE_THRESHOLD ||
+      Math.abs(e.clientY - mouseDownY) > MOVE_THRESHOLD
+    ) return;
+    navigateAt(e.clientX);
+  });
 
   return {
     destroy() {

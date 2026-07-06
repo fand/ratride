@@ -527,6 +527,16 @@ impl App {
                             if let Some(url) = self.hyperlink_at(mouse.column, mouse.row) {
                                 let url = url.to_string();
                                 let _ = Command::new("open").arg(&url).spawn();
+                            } else {
+                                // Click in left/right 40% zone navigates slides.
+                                let (term_w, _) =
+                                    crossterm::terminal::size().unwrap_or((80, 24));
+                                let rel_x = mouse.column as f64 / term_w.max(1) as f64;
+                                if rel_x <= 0.4 {
+                                    self.prev_page();
+                                } else if rel_x >= 0.6 {
+                                    self.next_page();
+                                }
                             }
                         }
                         MouseEventKind::Moved | MouseEventKind::Drag(..) => {
