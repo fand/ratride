@@ -4,12 +4,18 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const RELOAD_SCRIPT: &str = r#"<script>(function(){var v="";setInterval(function(){fetch("/__v").then(function(r){return r.text()}).then(function(t){if(v&&t!==v)location.reload();v=t}).catch(function(){})},1000)})()</script>"#;
 
 /// Start a dev server with live reload for exported slides.
-pub fn serve(file: &str, out_dir: &str, theme: Option<&str>, port: u16) -> io::Result<()> {
+pub fn serve(
+    file: &str,
+    out_dir: &str,
+    theme: Option<&str>,
+    host: &str,
+    port: u16,
+) -> io::Result<()> {
     // Initial export
     crate::export::export(file, out_dir, theme)?;
 
@@ -38,38 +44,59 @@ pub fn serve(file: &str, out_dir: &str, theme: Option<&str>, port: u16) -> io::R
 
     std::thread::spawn(move || {
         let _watcher = watcher; // keep alive
-        let mut last_reload = Instant::now();
-        for res in rx {
-            let event = match res {
-                Ok(e) => e,
-                Err(_) => continue,
+        let debounce = Duration::from_millis(300);
+        let mut pending = false;
+        loop {
+            // Block for the next event when idle; once something is
+            // pending, only wait out the debounce window so the trailing
+            // edit still triggers an export instead of being dropped.
+            let recv = if pending {
+                match rx.recv_timeout(debounce) {
+                    Ok(res) => Some(res),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            } else {
+                match rx.recv() {
+                    Ok(res) => Some(res),
+                    Err(_) => break,
+                }
             };
-            // Skip events from output directory
-            if event.paths.iter().all(|p| p.starts_with(&out_path_w)) {
+
+            if let Some(res) = recv {
+                let event = match res {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                // Skip events from output directory
+                if event.paths.iter().all(|p| p.starts_with(&out_path_w)) {
+                    continue;
+                }
+                if event.kind.is_modify() || event.kind.is_create() {
+                    // Coalesce bursts: mark pending and keep draining until
+                    // the debounce window goes quiet, then export once.
+                    pending = true;
+                }
                 continue;
             }
-            if event.kind.is_modify() || event.kind.is_create() {
-                // Simple debounce
-                if last_reload.elapsed() < Duration::from_millis(300) {
-                    continue;
-                }
-                last_reload = Instant::now();
-                if let Err(e) = crate::export::export(&file_w, &out_dir_w, theme_w.as_deref()) {
-                    eprintln!("export error: {}", e);
-                    continue;
-                }
-                let v = version_w.fetch_add(1, Ordering::Relaxed) + 1;
-                eprintln!("reloaded (v{})", v);
+
+            // Debounce window elapsed with a pending change: export now.
+            pending = false;
+            if let Err(e) = crate::export::export(&file_w, &out_dir_w, theme_w.as_deref()) {
+                eprintln!("export error: {}", e);
+                continue;
             }
+            let v = version_w.fetch_add(1, Ordering::Relaxed) + 1;
+            eprintln!("reloaded (v{})", v);
         }
     });
 
     // --- HTTP server ---
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("{}:{}", host, port);
     let server = tiny_http::Server::http(&addr)
         .map_err(|e| io::Error::new(io::ErrorKind::AddrInUse, e.to_string()))?;
 
-    eprintln!("serving on http://localhost:{}", port);
+    eprintln!("serving on http://{}:{}", host, port);
 
     for request in server.incoming_requests() {
         let v = Arc::clone(&version);
