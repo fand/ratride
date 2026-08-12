@@ -52,19 +52,28 @@ fn copy_assets(
     fs::create_dir_all(&assets_dir)?;
 
     let mut rewrites = Vec::new();
-    let mut seen: HashMap<String, bool> = HashMap::new();
+    // Maps an assigned asset filename to the source path that claimed it,
+    // so distinct sources sharing a basename get disambiguated instead of
+    // silently overwriting each other.
+    let mut assigned: HashMap<String, String> = HashMap::new();
 
     for old_path in paths {
         let src = base_dir.join(old_path);
-        let filename = Path::new(old_path)
+        let base = Path::new(old_path)
             .file_name()
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_else(|| old_path.replace('/', "_"));
 
-        if seen.contains_key(&filename) {
-            eprintln!("warning: filename collision for '{}', overwriting", filename);
-        }
-        seen.insert(filename.clone(), true);
+        // Pick a filename that is unique per source path. Reuse the plain
+        // basename when free (or already claimed by this same source);
+        // otherwise insert a short hash of the full source path before the
+        // extension: `logo.png` -> `logo-3f9a1c.png`.
+        let filename = match assigned.get(&base) {
+            None => base.clone(),
+            Some(owner) if owner == old_path => base.clone(),
+            Some(_) => disambiguate(&base, old_path),
+        };
+        assigned.insert(filename.clone(), old_path.clone());
 
         let dst = assets_dir.join(&filename);
         if src.exists() {
@@ -79,6 +88,19 @@ fn copy_assets(
     }
 
     Ok(rewrites)
+}
+
+/// Insert a short, stable hash of `key` before the extension of `base`.
+/// `logo.png` -> `logo-3f9a1c.png`; extensionless `logo` -> `logo-3f9a1c`.
+fn disambiguate(base: &str, key: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut hasher);
+    let hash = format!("{:06x}", hasher.finish() & 0xff_ffff);
+    match base.rsplit_once('.') {
+        Some((stem, ext)) => format!("{}-{}.{}", stem, hash, ext),
+        None => format!("{}-{}", base, hash),
+    }
 }
 
 /// Rewrite image paths in markdown text.
@@ -155,13 +177,23 @@ pub fn export(file: &str, out_dir: &str, theme: Option<&str>) -> io::Result<()> 
 
 #[cfg(test)]
 mod tests {
-    use super::rewrite_image_paths;
+    use super::{copy_assets, disambiguate, rewrite_image_paths};
+    use std::fs;
+    use std::path::PathBuf;
 
     fn rw(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
             .iter()
             .map(|(a, b)| (a.to_string(), b.to_string()))
             .collect()
+    }
+
+    fn tmp(tag: &str) -> PathBuf {
+        let name = format!("ratride-test-{}-{}", tag, std::process::id());
+        let dir = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
     }
 
     #[test]
@@ -198,5 +230,54 @@ mod tests {
         let md = "![](https://example.com/x.png)";
         let out = rewrite_image_paths(md, &rw(&[]));
         assert_eq!(out, md);
+    }
+
+    #[test]
+    fn disambiguate_inserts_hash_before_ext() {
+        let a = disambiguate("logo.png", "img/logo.png");
+        let b = disambiguate("logo.png", "diagrams/logo.png");
+        assert!(a.starts_with("logo-") && a.ends_with(".png"));
+        assert_ne!(a, b, "different sources must get different names");
+        // Stable across calls.
+        assert_eq!(a, disambiguate("logo.png", "img/logo.png"));
+    }
+
+    #[test]
+    fn disambiguate_handles_extensionless() {
+        let n = disambiguate("logo", "a/logo");
+        assert!(n.starts_with("logo-") && !n.contains('.'));
+    }
+
+    #[test]
+    fn colliding_basenames_do_not_overwrite() {
+        let base = tmp("collision");
+        fs::create_dir_all(base.join("img")).unwrap();
+        fs::create_dir_all(base.join("diagrams")).unwrap();
+        fs::write(base.join("img/logo.png"), b"AAAA").unwrap();
+        fs::write(base.join("diagrams/logo.png"), b"BBBB").unwrap();
+        let out = tmp("collision-out");
+
+        let paths = vec!["img/logo.png".to_string(), "diagrams/logo.png".to_string()];
+        let rewrites = copy_assets(&paths, &base, &out).unwrap();
+
+        // Two distinct destination files, both present, contents intact.
+        assert_eq!(rewrites.len(), 2);
+        let dst_a = &rewrites[0].1;
+        let dst_b = &rewrites[1].1;
+        assert_ne!(dst_a, dst_b, "colliding basenames must not share a file");
+        let read = |rel: &str| fs::read(out.join(rel.trim_start_matches("./"))).unwrap();
+        assert_eq!(read(dst_a), b"AAAA");
+        assert_eq!(read(dst_b), b"BBBB");
+    }
+
+    #[test]
+    fn same_source_reuses_plain_name() {
+        let base = tmp("dedup");
+        fs::write(base.join("logo.png"), b"X").unwrap();
+        let out = tmp("dedup-out");
+        // Same path twice: should keep the plain basename, no hash.
+        let paths = vec!["logo.png".to_string(), "logo.png".to_string()];
+        let rewrites = copy_assets(&paths, &base, &out).unwrap();
+        assert!(rewrites.iter().all(|(_, new)| new == "./assets/logo.png"));
     }
 }
