@@ -574,6 +574,10 @@ struct Cli {
     #[arg(long)]
     serve: bool,
 
+    /// Host/address for the dev server to bind
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+
     /// Port for dev server
     #[arg(long, default_value_t = 3000)]
     port: u16,
@@ -589,7 +593,13 @@ fn main() -> io::Result<()> {
                 .to_string_lossy()
                 .to_string()
         });
-        return ratride::serve::serve(&cli.file, &out_dir, cli.theme.as_deref(), cli.port);
+        return ratride::serve::serve(
+            &cli.file,
+            &out_dir,
+            cli.theme.as_deref(),
+            &cli.host,
+            cli.port,
+        );
     }
 
     if let Some(out_dir) = &cli.export {
